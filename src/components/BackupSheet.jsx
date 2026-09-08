@@ -1,0 +1,104 @@
+import React, { useRef, useState } from "react";
+import { S, LINE } from "../styles.js";
+import { iso } from "../lib/dates.js";
+
+/* Everything the board remembers lives in one browser. Clearing site data,
+   a new phone or a reinstall takes it with it, so a backup is not optional
+   housekeeping. The file is written locally and never uploaded. */
+export function BackupSheet({ close, exportBlob, importBlob, onLock, today, flash, storageOk }) {
+  const file = useRef(null);
+  const [confirmImport, setConfirmImport] = useState(null);
+
+  function download() {
+    try {
+      const blob = new Blob([JSON.stringify(exportBlob(), null, 2)], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `skymo-backup-${iso(today)}.json`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      flash("Backup saved");
+    } catch {
+      flash("Could not save the file");
+    }
+  }
+
+  async function pick(e) {
+    const f = e.target.files?.[0];
+    e.target.value = "";
+    if (!f) return;
+    try {
+      setConfirmImport(JSON.parse(await f.text()));
+    } catch {
+      flash("That file could not be read");
+    }
+  }
+
+  function doImport() {
+    try {
+      importBlob(confirmImport);
+      setConfirmImport(null);
+      flash("Backup restored");
+      close();
+    } catch (err) {
+      flash(err.message || "Could not restore that file");
+      setConfirmImport(null);
+    }
+  }
+
+  return (
+    <div style={S.scrim} onClick={close}>
+      <div style={S.sheetUp} onClick={(e) => e.stopPropagation()} data-noswipe>
+        <div style={{ ...S.h2, marginTop: 0 }}>Backup and lock</div>
+
+        {!storageOk && (
+          <div style={{ ...S.rules, background: "#FFF1F1", borderColor: "#F5B0B0" }}>
+            <div style={S.rule}>
+              This browser is not saving anything. Private browsing or blocked site
+              data will do that. Ticking boxes will not stick until that changes.
+            </div>
+          </div>
+        )}
+
+        <div style={S.sub}>
+          Ticks, lanes, supplies and anything you added live in this browser only.
+          Save a copy somewhere you trust.
+        </div>
+
+        {confirmImport ? (
+          <>
+            <div style={{ ...S.rules, background: "#FFF1F1", borderColor: "#F5B0B0" }}>
+              <div style={S.rule}>
+                Restoring replaces everything currently on the board with the contents
+                of that file. This cannot be undone.
+              </div>
+            </div>
+            <button onClick={doImport} style={S.bigBtn}>Replace the board</button>
+            <button onClick={() => setConfirmImport(null)} style={S.textBtn}>Keep what I have</button>
+          </>
+        ) : (
+          <>
+            <button onClick={download} style={S.bigBtn}>Save a backup file</button>
+            <div style={{ height: 8 }} />
+            <button onClick={() => file.current?.click()} style={{ ...S.bigBtn, background: "#fff", color: "#2F2A3D", border: `1.5px solid ${LINE}` }}>
+              Restore from a file
+            </button>
+            <input ref={file} type="file" accept="application/json,.json" onChange={pick} style={{ display: "none" }} />
+
+            <div style={{ borderTop: `1px solid ${LINE}`, marginTop: 20, paddingTop: 16 }}>
+              <div style={S.sub}>
+                Locking forgets the key on this device. You will need the passcode again.
+              </div>
+              <button onClick={onLock} style={{ ...S.bigBtn, background: "#C62A40" }}>Lock this device</button>
+            </div>
+
+            <button onClick={close} style={S.textBtn}>Close</button>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}

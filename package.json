@@ -1,0 +1,31 @@
+{
+  "name": "sky-mo-todo",
+  "private": true,
+  "version": "3.0.0",
+  "type": "module",
+  "description": "Child First caseload board for Skylar (FRP) and Mo (clinician)",
+  "scripts": {
+    "dev": "vite",
+    "build": "node scripts/gen-icons.mjs && vite build && node scripts/stamp-sw.mjs && node scripts/check-leaks.mjs",
+    "preview": "vite preview --port 4173",
+    "lint": "eslint src scripts tests --max-warnings 0",
+    "data:encrypt": "node scripts/encrypt-data.mjs",
+    "data:decrypt": "node scripts/decrypt-data.mjs",
+    "check:leaks": "node scripts/check-leaks.mjs",
+    "verify": "npm run lint && npm run build && npm test",
+    "test": "node tests/run.mjs"
+  },
+  "dependencies": {
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.3.4",
+    "eslint": "^9.17.0",
+    "eslint-plugin-react": "^7.37.5",
+    "eslint-plugin-react-hooks": "^5.1.0",
+    "globals": "^15.14.0",
+    "playwright": "^1.63.0",
+    "vite": "^6.0.7"
+  }
+}
