@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from "react";
 import { S } from "../styles.js";
-import { TONES, SHARES, NOTES, RULES } from "../data/library.js";
+import { TONES, SHARES, SHARE_TAGS, NOTES, RULES, COMING } from "../data/library.js";
 import { iso, spokenDate, LONG } from "../lib/dates.js";
 import { visitsOn, upcomingVisitDays } from "../lib/schedule.js";
 
@@ -12,7 +12,9 @@ const renderShare = (share, size) =>
 export function TextsTab({ families, today, sent, setSent, copy, initialDay }) {
   const [mode, setMode] = useState("reminders");
   const [tone, setTone] = useState("warm");
+  const [coming, setComing] = useState("both"); // both of you is the usual case
   const [shareId, setShareId] = useState(null);
+  const [shareTag, setShareTag] = useState("dyad"); // the work is dyadic; start there
   const [len, setLen] = useState("short");
 
   const days = useMemo(() => upcomingVisitDays(families, today, 4), [families, today]);
@@ -75,13 +77,27 @@ export function TextsTab({ families, today, sent, setSent, copy, initialDay }) {
             ))}
           </div>
 
+          <div style={S.fieldLabel}>Who the family should expect</div>
+          <div style={{ ...S.rowWrap, marginTop: 6 }}>
+            {COMING.map(([k, l]) => (
+              <button
+                key={k}
+                onClick={() => setComing(k)}
+                style={{ ...S.mini, ...(coming === k ? S.miniOn : {}) }}
+                aria-pressed={coming === k}
+              >
+                {l}
+              </button>
+            ))}
+          </div>
+
           {target && visits.length === 0 && (
             <div style={S.empty}>Nobody on that day has texting turned on.</div>
           )}
 
           {visits.map((c) => {
             const key = c.id + iso(target);
-            const body = (c.first ? FIRST_TONE : T).build(c, spokenDate(target));
+            const body = (c.first ? FIRST_TONE : T).build(c, spokenDate(target), coming);
             const done = !!sent[key];
             return (
               <div key={c.id} style={{ ...S.msg, opacity: done ? 0.55 : 1 }}>
@@ -110,13 +126,28 @@ export function TextsTab({ families, today, sent, setSent, copy, initialDay }) {
       {mode === "share" && !share && (
         <>
           <div style={S.sub}>Something worth passing along. Pick a topic, then pick a length.</div>
-          {SHARES.map((s) => (
+          <div style={S.rowWrap}>
+            {SHARE_TAGS.map(([k, l]) => (
+              <button
+                key={k}
+                onClick={() => setShareTag(k)}
+                style={{ ...S.mini, ...(shareTag === k ? S.miniOn : {}) }}
+                aria-pressed={shareTag === k}
+              >
+                {l}
+              </button>
+            ))}
+          </div>
+          {SHARES.filter((s) => shareTag === "all" || s.tag === shareTag).map((s) => (
             <button key={s.id} onClick={() => setShareId(s.id)} style={S.shareRow}>
               <div style={{ fontSize: 15.5, fontWeight: 700 }}>{s.title}</div>
               <div style={{ fontSize: 12.5, opacity: 0.6, marginTop: 2, lineHeight: 1.4 }}>{s.blurb}</div>
             </button>
           ))}
-          <div style={{ ...S.sub, marginTop: 18 }}>Every link in here has been checked and works.</div>
+          <div style={{ ...S.sub, marginTop: 18 }}>
+            Between them puts something in the relationship. For the caregiver holds up the adult.
+            Links are re-checked whenever the board is built.
+          </div>
         </>
       )}
 

@@ -8,8 +8,9 @@ dist
 
 # Plaintext caseload. Contains client information and must never be committed.
 # Only public/caseload.enc.json, the encrypted form, belongs in this repo.
-data/caseload.source.mjs
-data/caseload.local.json
+# The whole directory is ignored rather than named files: a .bak or a rename
+# is exactly how the plaintext would otherwise slip through.
+data/
 
 # Test screenshots
 tests/shots

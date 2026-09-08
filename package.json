@@ -13,7 +13,9 @@
     "data:decrypt": "node scripts/decrypt-data.mjs",
     "check:leaks": "node scripts/check-leaks.mjs",
     "verify": "npm run lint && npm run build && npm test",
-    "test": "node tests/run.mjs"
+    "test": "node tests/run.mjs",
+    "calendar:apply": "node scripts/apply-calendar.mjs",
+    "check:links": "node scripts/check-links.mjs"
   },
   "dependencies": {
     "react": "^18.3.1",

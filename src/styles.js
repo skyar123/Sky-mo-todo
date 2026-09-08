@@ -66,6 +66,12 @@ export const S = {
   taskBody: { padding: "0 0 12px 32px" },
   note: { fontSize: 12.5, opacity: 0.68, lineHeight: 1.5, marginBottom: 9 },
 
+  editLabel: { fontSize: 10.5, fontWeight: 700, opacity: 0.45, margin: "8px 0 3px" },
+  editInput: { width: "100%", fontFamily: F, fontSize: 14, lineHeight: 1.4, padding: "9px 10px", borderRadius: 10, border: `1.5px solid ${LINE}`, background: "#fff", color: INK },
+  editArea: { width: "100%", fontFamily: F, fontSize: 13, lineHeight: 1.5, padding: "9px 10px", borderRadius: 10, border: `1.5px solid ${LINE}`, background: "#fff", color: INK, resize: "vertical" },
+  editRow: { display: "flex", gap: 6, alignItems: "center" },
+  quickAdd: { display: "flex", gap: 6, alignItems: "center", padding: "10px 0 4px" },
+
   rowWrap: { display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center", marginBottom: 12 },
   mini: { fontFamily: F, fontSize: 12, fontWeight: 600, minHeight: 32, padding: "7px 12px", borderRadius: 99, border: `1.5px solid ${LINE}`, background: "#fff", color: INK, cursor: "pointer" },
   miniOn: { background: INK, color: "#fff", borderColor: INK },

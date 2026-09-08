@@ -1,12 +1,12 @@
 import React from "react";
 import { S } from "../styles.js";
 import { Fold, Field } from "./bits.jsx";
-import { Task } from "./Task.jsx";
+import { Task, QuickAdd } from "./Task.jsx";
 import { SUPPLIES, KIND, ORDER } from "../data/library.js";
 import { LONG, iso, fmtShort, parseISO } from "../lib/dates.js";
 import { isScheduled } from "../lib/schedule.js";
 
-export function FamilyDetail({ c, tasks, supplies, drops, today, board, onBack }) {
+export function FamilyDetail({ c, tasks, families, familyById, supplies, drops, today, board, onFlash, onBack }) {
   const mine = tasks.filter((x) => x.client === c.id);
   const openCount = mine.filter((x) => !x.done).length;
   const sup = supplies[c.id] || [];
@@ -82,15 +82,17 @@ export function FamilyDetail({ c, tasks, supplies, drops, today, board, onBack }
                   x={x}
                   color={c.color}
                   today={today}
-                  toggle={board.toggle}
-                  setLaneOf={board.setLaneOf}
-                  remove={board.removeWithUndo}
+                  families={families}
+                  familyById={familyById}
+                  board={board}
+                  onFlash={onFlash}
                 />
               ))}
             </div>
           );
         })}
         {mine.length === 0 && <div style={S.empty}>Nothing on this family yet.</div>}
+        <QuickAdd client={c.id} board={board} onFlash={onFlash} />
       </Fold>
 
       {c.watch.length > 0 && (

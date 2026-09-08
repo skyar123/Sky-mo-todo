@@ -4,11 +4,24 @@ import { VisitRow } from "./bits.jsx";
 import { pillStyle } from "./Task.jsx";
 import { LONG, fmtDay, dueInfo, spokenDate } from "../lib/dates.js";
 import { agendaFor, nextVisitDay } from "../lib/schedule.js";
+import { buildICS, downloadICS, icsFilename } from "../lib/ics.js";
 
-export function DayTab({ caseload, today, counts, supplies, soon, openCount, unsent, reminderDay, onOpenFamily, onGoTexts }) {
+export function DayTab({ caseload, today, counts, supplies, soon, openCount, unsent, reminderDay, familyById, onFlash, onOpenFamily, onGoTexts }) {
   const { families, blocks } = caseload;
   const agenda = agendaFor(families, blocks, today);
   const ahead = agenda.length ? null : nextVisitDay(families, today);
+
+  /* Due dates are only useful if they reach you when you are not looking at
+     this screen, so they go into the calendar that already nags you. */
+  function remindAll() {
+    const ics = buildICS(soon.map((s) => s.task), familyById);
+    if (!ics) {
+      onFlash?.("Nothing with a due date this week");
+      return;
+    }
+    downloadICS(ics, icsFilename("due-this-week", today));
+    onFlash?.("Opening in your calendar");
+  }
   const aheadAgenda = ahead ? agendaFor(families, blocks, ahead) : [];
 
   return (
@@ -90,6 +103,11 @@ export function DayTab({ caseload, today, counts, supplies, soon, openCount, uns
               </button>
             );
           })}
+          <div style={{ ...S.rowWrap, marginTop: 12 }}>
+            <button onClick={remindAll} style={S.mini}>
+              Add these {soon.length} to my calendar
+            </button>
+          </div>
         </>
       )}
     </>

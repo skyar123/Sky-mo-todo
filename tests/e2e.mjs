@@ -155,7 +155,9 @@ await page.click('button:has-text("Day")');
 await page.click('button[aria-label="Add tasks"]');
 await page.waitForSelector("#notes");
 await page.fill("#notes", `${phrase}\ncall the clinic`);
-await page.click('button:has-text("Add")');
+// Exact match: "Add these N to my calendar" and the quick-add button both
+// contain "Add", and the paste sheet's submit is the one meant here.
+await page.click('button:text-is("Add")');
 await page.waitForTimeout(700);
 await openFamily(target.name);
 await page.waitForTimeout(400);

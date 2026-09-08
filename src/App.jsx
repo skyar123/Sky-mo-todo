@@ -73,6 +73,8 @@ export default function App({ caseload, onLock }) {
     setToast(null);
   }, []);
 
+  const boardWithUndo = useMemo(() => ({ ...board, removeWithUndo }), [board, removeWithUndo]);
+
   const inLane = useCallback((t) => lane === "all" || t.lane === lane || t.lane === "both", [lane]);
   const laneTasks = useMemo(() => board.openTasks.filter(inLane), [board.openTasks, inLane]);
 
@@ -246,10 +248,13 @@ export default function App({ caseload, onLock }) {
           <FamilyDetail
             c={openFamily}
             tasks={board.tasks}
+            families={families}
+            familyById={byId}
             supplies={board.supplies}
             drops={board.drops}
             today={today}
-            board={{ ...board, removeWithUndo }}
+            board={boardWithUndo}
+            onFlash={flash}
             onBack={() => setOpenId(null)}
           />
         )}
@@ -264,6 +269,8 @@ export default function App({ caseload, onLock }) {
             openCount={laneTasks.length}
             unsent={unsent}
             reminderDay={reminderDay}
+            familyById={byId}
+            onFlash={flash}
             onOpenFamily={goFamily}
             onGoTexts={() => setTab("texts")}
           />
