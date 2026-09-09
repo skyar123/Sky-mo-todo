@@ -1,9 +1,17 @@
 [build]
   command = "npm run build"
   publish = "dist"
+  functions = "netlify/functions"
 
 [build.environment]
   NODE_VERSION = "22"
+
+# The sync endpoint is a function, so it must not be swallowed by the SPA
+# catch-all below. Order matters here.
+[[redirects]]
+  from = "/api/board"
+  to = "/.netlify/functions/board"
+  status = 200
 
 # Single-page app: every path resolves to the shell.
 [[redirects]]
@@ -21,6 +29,11 @@
     Permissions-Policy = "geolocation=(), microphone=(), camera=(), interest-cohort=()"
 
 # The caseload is encrypted, but it should still never sit in a shared cache.
+[[headers]]
+  for = "/api/board"
+  [headers.values]
+    Cache-Control = "no-store"
+
 [[headers]]
   for = "/caseload.enc.json"
   [headers.values]

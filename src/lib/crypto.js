@@ -49,6 +49,14 @@ export async function encryptJSON(data, passcode, iterations = KDF_ITERATIONS) {
   };
 }
 
+/** Encrypt with a key already in hand, reusing the payload's salt so the
+    device key stays valid across writes. */
+export async function encryptWithKey(data, key, salt) {
+  const iv = globalThis.crypto.getRandomValues(new Uint8Array(12));
+  const ct = await SUBTLE().encrypt({ name: "AES-GCM", iv }, key, enc.encode(JSON.stringify(data)));
+  return { v: 1, cipher: "AES-256-GCM", salt, iv: toB64(iv), ct: toB64(ct) };
+}
+
 /** Throws if the passcode is wrong. That is the point. */
 export async function decryptWithKey(payload, key) {
   const plain = await SUBTLE().decrypt(

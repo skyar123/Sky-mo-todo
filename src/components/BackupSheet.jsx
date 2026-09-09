@@ -1,11 +1,12 @@
 import React, { useRef, useState } from "react";
 import { S, LINE } from "../styles.js";
 import { iso } from "../lib/dates.js";
+import { PEOPLE } from "../lib/identity.js";
 
 /* Everything the board remembers lives in one browser. Clearing site data,
    a new phone or a reinstall takes it with it, so a backup is not optional
    housekeeping. The file is written locally and never uploaded. */
-export function BackupSheet({ close, exportBlob, importBlob, onLock, today, flash, storageOk }) {
+export function BackupSheet({ close, exportBlob, importBlob, onLock, who, setWho, shared, today, flash, storageOk }) {
   const file = useRef(null);
   const [confirmImport, setConfirmImport] = useState(null);
 
@@ -52,7 +53,29 @@ export function BackupSheet({ close, exportBlob, importBlob, onLock, today, flas
   return (
     <div style={S.scrim} onClick={close}>
       <div style={S.sheetUp} onClick={(e) => e.stopPropagation()} data-noswipe>
-        <div style={{ ...S.h2, marginTop: 0 }}>Backup and lock</div>
+        <div style={{ ...S.h2, marginTop: 0 }}>Board settings</div>
+
+        {shared && (
+          <div style={{ marginBottom: 16 }}>
+            <div style={S.fieldLabel}>Whose phone is this</div>
+            <div style={{ ...S.rowWrap, marginTop: 6 }}>
+              {PEOPLE.map(([k, l]) => (
+                <button
+                  key={k}
+                  onClick={() => setWho(k)}
+                  style={{ ...S.mini, ...(who === k ? S.miniOn : {}) }}
+                  aria-pressed={who === k}
+                >
+                  {l}
+                </button>
+              ))}
+            </div>
+            <div style={{ ...S.tip, marginTop: 4 }}>
+              This board is shared. Ticks, notes and supplies sync between both of you.
+              Only the labels change here, not who a task belongs to.
+            </div>
+          </div>
+        )}
 
         {!storageOk && (
           <div style={{ ...S.rules, background: "#FFF1F1", borderColor: "#F5B0B0" }}>

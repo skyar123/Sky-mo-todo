@@ -11,6 +11,7 @@ const PAYLOAD_URL = `${import.meta.env.BASE_URL}caseload.enc.json`;
 export default function Vault() {
   const [payload, setPayload] = useState(null);
   const [caseload, setCaseload] = useState(null);
+  const [cryptoKey, setCryptoKey] = useState(null);
   const [loadErr, setLoadErr] = useState("");
   const [autoTried, setAutoTried] = useState(false);
 
@@ -36,7 +37,10 @@ export default function Vault() {
         try {
           const key = await importKey(cached.raw);
           const decoded = await decryptWithKey(data, key);
-          if (alive) setCaseload(decoded);
+          if (alive) {
+            setCryptoKey(key);
+            setCaseload(decoded);
+          }
         } catch {
           remove(KEY_CACHE);
         }
@@ -56,6 +60,7 @@ export default function Vault() {
         } else {
           remove(KEY_CACHE);
         }
+        setCryptoKey(key);
         setCaseload(data);
         return true;
       } catch {
@@ -67,6 +72,7 @@ export default function Vault() {
 
   const lock = useCallback(() => {
     remove(KEY_CACHE);
+    setCryptoKey(null);
     setCaseload(null);
   }, []);
 
@@ -85,5 +91,7 @@ export default function Vault() {
 
   if (!caseload) return <LockScreen onUnlock={unlock} autoTried={autoTried} />;
 
-  return <App caseload={caseload} onLock={lock} />;
+  /* The same key that opened the caseload also encrypts the shared board,
+     so nothing readable ever reaches the sync endpoint. */
+  return <App caseload={caseload} onLock={lock} crypto={{ key: cryptoKey, salt: payload?.salt }} />;
 }

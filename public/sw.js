@@ -69,6 +69,11 @@ self.addEventListener("fetch", (e) => {
   const url = new URL(request.url);
   if (url.origin !== self.location.origin) return;
 
+  /* The shared board must never come from a cache. A stale read here would
+     show the other person's work as it was minutes ago, and a cached write
+     would be worse. Let these go straight to the network. */
+  if (url.pathname.startsWith("/api/") || url.pathname.startsWith("/.netlify/")) return;
+
   if (request.mode === "navigate") {
     e.respondWith(networkFirst(request, "/index.html"));
     return;

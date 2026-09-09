@@ -29,7 +29,7 @@ async function walk(dir, base = "") {
 const all = await walk(DIST);
 const precache = [
   "/",
-  ...all.filter((p) => p !== "/sw.js" && p !== "/robots.txt"),
+  ...all.filter((p) => p !== "/sw.js" && p !== "/robots.txt" && !p.startsWith("/api/")),
 ].sort();
 
 const id = new Date().toISOString().replace(/[-:.TZ]/g, "").slice(0, 14);

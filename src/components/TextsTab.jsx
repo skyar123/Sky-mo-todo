@@ -3,13 +3,14 @@ import { S } from "../styles.js";
 import { TONES, SHARES, SHARE_TAGS, NOTES, RULES, COMING } from "../data/library.js";
 import { iso, spokenDate, LONG } from "../lib/dates.js";
 import { visitsOn, upcomingVisitDays } from "../lib/schedule.js";
+import { buildReminderICS, downloadICS, icsFilename } from "../lib/ics.js";
 
 const FIRST_TONE = TONES.find((t) => t.id === "first");
 
 const renderShare = (share, size) =>
   share.links.reduce((out, l, i) => out.split(`[link${i + 1}]`).join(l.url), share[size]);
 
-export function TextsTab({ families, today, sent, setSent, copy, initialDay }) {
+export function TextsTab({ families, today, sent, setSent, copy, initialDay, onFlash }) {
   const [mode, setMode] = useState("reminders");
   const [tone, setTone] = useState("warm");
   const [coming, setComing] = useState("both"); // both of you is the usual case
@@ -89,6 +90,24 @@ export function TextsTab({ families, today, sent, setSent, copy, initialDay }) {
                 {l}
               </button>
             ))}
+          </div>
+
+          <div style={{ ...S.rowWrap, marginTop: 2 }}>
+            <button
+              onClick={() => {
+                const ics = buildReminderICS(families, today);
+                if (!ics) { onFlash?.("Nothing scheduled to remind about"); return; }
+                downloadICS(ics, icsFilename("send-reminders", today));
+                onFlash?.("Opening in your calendar");
+              }}
+              style={S.mini}
+            >
+              Remind me to send these
+            </button>
+          </div>
+          <div style={{ ...S.tip, marginTop: -4, marginBottom: 14 }}>
+            Adds a repeating 8am alarm the morning before each visit day, so it
+            reaches you whether or not this is open.
           </div>
 
           {target && visits.length === 0 && (

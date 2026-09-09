@@ -5,7 +5,8 @@
    whatever calendar the phone already uses, and the reminder fires from
    there even when this board is closed. */
 
-import { parseISO, iso } from "./dates.js";
+import { parseISO, iso, addDays, LONG } from "./dates.js";
+import { visitsOn, isScheduled } from "./schedule.js";
 
 const pad = (n) => String(n).padStart(2, "0");
 const stamp = (d) =>
@@ -97,3 +98,76 @@ export function downloadICS(content, filename) {
 
 export const icsFilename = (label, today) =>
   `skymo-${label}-${iso(today)}.ics`.replace(/[^a-zA-Z0-9._-]/g, "-");
+
+
+/* ---------------------------------------------------------------------------
+   The standing nudge to send tomorrow's reminders.
+
+   A text that goes out the night before only helps if it actually goes out.
+   The board can show a prompt, but only while it is open. A repeating calendar
+   entry the morning before each visit day fires whether or not the board is
+   open, from the calendar already being watched.
+
+   Times are floating: no Z and no TZID, so they mean 8am wherever the phone
+   is, which is what a morning routine should do. --------------------------- */
+
+const BYDAY = ["SU", "MO", "TU", "WE", "TH", "FR", "SA"];
+
+const local = (d, hour, minute = 0) =>
+  `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}T${pad(hour)}${pad(minute)}00`;
+
+/** The next date on or after `from` that falls on weekday `dow`. */
+function nextDow(from, dow) {
+  const delta = (dow - from.getDay() + 7) % 7;
+  return addDays(from, delta);
+}
+
+/**
+ * One weekly repeating event per visit day, set the morning before, listing
+ * who is expected. Regenerate it after the schedule changes.
+ */
+export function buildReminderICS(families, today, { hour = 8 } = {}) {
+  const days = [...new Set(families.filter((f) => isScheduled(f) && f.texts).map((f) => f.day))].sort();
+  if (!days.length) return null;
+
+  const events = days.map((day) => {
+    const eve = (day + 6) % 7; // the day before
+    let first = nextDow(today, eve);
+    /* If that morning has already gone by, start next week rather than
+       writing a first occurrence whose alarm can never fire. */
+    const at = new Date(first);
+    at.setHours(hour, 0, 0, 0);
+    if (at.getTime() <= Date.now()) first = addDays(first, 7);
+    const who = visitsOn(families, { getDay: () => day })
+      .filter((f) => f.texts)
+      .map((f) => `${f.name} at ${f.time}`)
+      .join(", ");
+
+    return [
+      "BEGIN:VEVENT",
+      `UID:skymo-remind-${day}@sky-mo-caseload`,
+      `DTSTAMP:${stamp(new Date())}`,
+      `DTSTART:${local(first, hour)}`,
+      `DTEND:${local(first, hour, 15)}`,
+      `RRULE:FREQ=WEEKLY;BYDAY=${BYDAY[eve]}`,
+      fold(`SUMMARY:${esc(`Text tomorrow's families (${LONG[day]})`)}`),
+      fold(`DESCRIPTION:${esc(`Open sky + mo, Texts tab, and send ${LONG[day]}'s reminders.\n${who}`)}`),
+      "BEGIN:VALARM",
+      "ACTION:DISPLAY",
+      fold(`DESCRIPTION:${esc(`Text tomorrow's families (${LONG[day]})`)}`),
+      "TRIGGER:PT0M",
+      "END:VALARM",
+      "END:VEVENT",
+    ].join("\r\n");
+  });
+
+  return [
+    "BEGIN:VCALENDAR",
+    "VERSION:2.0",
+    "PRODID:-//sky + mo//caseload board//EN",
+    "CALSCALE:GREGORIAN",
+    "METHOD:PUBLISH",
+    ...events,
+    "END:VCALENDAR",
+  ].join("\r\n");
+}

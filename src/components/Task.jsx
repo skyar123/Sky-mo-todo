@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { S, HOT, WARN } from "../styles.js";
-import { LANES, KIND, ORDER } from "../data/library.js";
+import { KIND, ORDER } from "../data/library.js";
+import { assignLabels } from "../lib/identity.js";
 import { dueInfo } from "../lib/dates.js";
 import { buildICS, downloadICS, icsFilename } from "../lib/ics.js";
 
@@ -15,7 +16,7 @@ export function pillStyle(d) {
    no save button: every field writes straight through, and the board's
    debounced save picks it up. Getting a due date onto a task should cost one
    tap and one date, not a trip through a dialog. */
-export function Task({ x, color, today, families, familyById, board, onFlash }) {
+export function Task({ x, color, today, families, familyById, board, who, onFlash }) {
   const [open, setOpen] = useState(false);
   const d = dueInfo(x.due, today);
   const set = (patch) => board.update(x.id, patch);
@@ -120,7 +121,7 @@ export function Task({ x, color, today, families, familyById, board, onFlash }) 
 
           <div style={S.editLabel}>Whose</div>
           <div style={S.rowWrap}>
-            {LANES.map(([k, l]) => (
+            {assignLabels(who).map(([k, l]) => (
               <button
                 key={k}
                 onClick={() => set({ lane: k })}

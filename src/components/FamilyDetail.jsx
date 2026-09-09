@@ -6,7 +6,7 @@ import { SUPPLIES, KIND, ORDER } from "../data/library.js";
 import { LONG, iso, fmtShort, parseISO } from "../lib/dates.js";
 import { isScheduled } from "../lib/schedule.js";
 
-export function FamilyDetail({ c, tasks, families, familyById, supplies, drops, today, board, onFlash, onBack }) {
+export function FamilyDetail({ c, tasks, families, familyById, supplies, drops, today, board, who, onFlash, onBack }) {
   const mine = tasks.filter((x) => x.client === c.id);
   const openCount = mine.filter((x) => !x.done).length;
   const sup = supplies[c.id] || [];
@@ -85,6 +85,7 @@ export function FamilyDetail({ c, tasks, families, familyById, supplies, drops, 
                   families={families}
                   familyById={familyById}
                   board={board}
+                  who={who}
                   onFlash={onFlash}
                 />
               ))}

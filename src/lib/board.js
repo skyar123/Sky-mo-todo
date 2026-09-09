@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { readJSON, writeJSON } from "./storage.js";
 import { daysBetween, parseISO } from "./dates.js";
+import { toShared, fromShared } from "./shared.js";
+import { syncOnce, writeToken } from "./sync.js";
 
 const KEY = "board-v3";
 const SCHEMA = 3;
@@ -49,7 +51,7 @@ function pruneSent(sent, today) {
   return out;
 }
 
-export function useBoard(caseload, today) {
+export function useBoard(caseload, today, crypto) {
   const { families, seedTasks } = caseload;
   const originals = useMemo(() => new Map(seedTasks.map((t) => [t.id, t])), [seedTasks]);
 
@@ -59,8 +61,15 @@ export function useBoard(caseload, today) {
     Object.fromEntries(families.map((c) => [c.id, c.supplies || []]))
   );
   const [drops, setDrops] = useState({});
+  const [tombstones, setTombstones] = useState({});
   const [ready, setReady] = useState(false);
+  const [syncState, setSyncState] = useState(crypto?.key ? "idle" : "off");
+  const [lastSync, setLastSync] = useState(null);
   const saveRef = useRef(null);
+  const revRef = useRef(0);
+  const tokenRef = useRef(null);
+  const busyRef = useRef(false);
+  const dirtyRef = useRef(false);
 
   /* Load once, after the caseload is unlocked. */
   useEffect(() => {
@@ -72,6 +81,7 @@ export function useBoard(caseload, today) {
         setSupplies((p) => ({ ...p, ...saved.supplies }));
       }
       if (saved.drops) setDrops(saved.drops);
+      if (saved.tombstones) setTombstones(saved.tombstones);
     }
     setReady(true);
     // Runs once per unlock; the caseload does not change underneath us.
@@ -93,45 +103,59 @@ export function useBoard(caseload, today) {
         sent,
         supplies,
         drops,
+        tombstones,
       });
     }, 400);
     return () => clearTimeout(saveRef.current);
-  }, [tasks, sent, supplies, drops, ready, originals]);
+  }, [tasks, sent, supplies, drops, tombstones, ready, originals]);
 
-  const toggle = useCallback(
-    (id) => setTasks((p) => p.map((x) => (x.id === id ? { ...x, done: !x.done } : x))),
-    []
-  );
-  const setLaneOf = useCallback(
-    (id, lane) => setTasks((p) => p.map((x) => (x.id === id ? { ...x, lane } : x))),
-    []
-  );
+  /* Every change is stamped. The merge is newest-wins per entry, so an
+     unstamped edit would lose to whatever the other person did last. */
+  const touch = useCallback((id, patch) => {
+    dirtyRef.current = true;
+    setTasks((p) =>
+      p.map((x) => (x.id === id ? { ...x, ...(typeof patch === "function" ? patch(x) : patch), updatedAt: Date.now() } : x))
+    );
+  }, []);
+
+  const toggle = useCallback((id) => touch(id, (x) => ({ done: !x.done })), [touch]);
+  const setLaneOf = useCallback((id, lane) => touch(id, { lane }), [touch]);
   const remove = useCallback((id) => {
     let removed = null;
+    dirtyRef.current = true;
     setTasks((p) => {
       const i = p.findIndex((x) => x.id === id);
       if (i < 0) return p;
       removed = { task: p[i], index: i };
       return [...p.slice(0, i), ...p.slice(i + 1)];
     });
+    /* Without a tombstone the other device's copy would put it straight back
+       on the next sync. */
+    setTombstones((p) => ({ ...p, [id]: Date.now() }));
     return () => {
       if (!removed) return;
+      setTombstones((p) => {
+        const next = { ...p };
+        delete next[removed.task.id];
+        return next;
+      });
       setTasks((p) => {
         if (p.some((x) => x.id === removed.task.id)) return p;
         const next = [...p];
-        next.splice(Math.min(removed.index, next.length), 0, removed.task);
+        next.splice(Math.min(removed.index, next.length), 0, { ...removed.task, updatedAt: Date.now() });
         return next;
       });
     };
   }, []);
-  const add = useCallback((made) => setTasks((p) => [...made, ...p]), []);
+  const add = useCallback((made) => {
+    dirtyRef.current = true;
+    const at = Date.now();
+    setTasks((p) => [...made.map((t) => ({ ...t, updatedAt: at })), ...p]);
+  }, []);
 
   /* Field-level edit. Used by the inline editor, so every keystroke lands on
      the task itself and the debounced save picks it up. */
-  const update = useCallback(
-    (id, patch) => setTasks((p) => p.map((x) => (x.id === id ? { ...x, ...patch } : x))),
-    []
-  );
+  const update = useCallback((id, patch) => touch(id, patch), [touch]);
 
   /* Quick add straight into a family, without opening the paste sheet. */
   const addQuick = useCallback(
@@ -141,20 +165,88 @@ export function useBoard(caseload, today) {
         client: client || null,
         lane, kind, text: text.trim(), due, note: "", done: false, seed: false,
       };
-      setTasks((p) => [task, ...p]);
+      dirtyRef.current = true;
+      setTasks((p) => [{ ...task, updatedAt: Date.now() }, ...p]);
       return task;
     },
     []
   );
 
-  const toggleSupply = useCallback(
-    (famId, item) =>
-      setSupplies((p) => {
-        const cur = p[famId] || [];
-        return { ...p, [famId]: cur.includes(item) ? cur.filter((x) => x !== item) : [...cur, item] };
-      }),
-    []
-  );
+  const toggleSupply = useCallback((famId, item) => {
+    dirtyRef.current = true;
+    setSupplies((p) => {
+      const cur = p[famId] || [];
+      return { ...p, [famId]: cur.includes(item) ? cur.filter((x) => x !== item) : [...cur, item] };
+    });
+  }, []);
+
+  /* --- sharing ---------------------------------------------------------
+     Two people, one board. The server holds ciphertext and a revision number;
+     everything here is about merging rather than overwriting.
+
+     State is read through a ref so the sync callback keeps a stable identity.
+     Otherwise every keystroke would rebuild it and restart the timers. */
+  const stateRef = useRef(null);
+  stateRef.current = { tasks, sent, supplies, drops, tombstones };
+
+  const runSync = useCallback(async () => {
+    if (!crypto?.key || busyRef.current) return;
+    busyRef.current = true;
+    setSyncState("syncing");
+    try {
+      if (!tokenRef.current) tokenRef.current = await writeToken(crypto.key);
+      const local = toShared(stateRef.current, originals);
+      const { doc, rev } = await syncOnce(local, {
+        key: crypto.key,
+        token: tokenRef.current,
+        salt: crypto.salt,
+        rev: revRef.current,
+      });
+      revRef.current = rev;
+      dirtyRef.current = false;
+
+      const next = fromShared(doc, seedTasks);
+      setTasks(next.tasks);
+      setSent(next.sent);
+      setSupplies((p) => ({ ...p, ...next.supplies }));
+      setDrops(next.drops);
+      setTombstones(next.tombstones);
+      setSyncState("idle");
+      setLastSync(Date.now());
+    } catch {
+      /* A failed sync must never cost local work. The board keeps what it has
+         and tries again. */
+      setSyncState(typeof navigator !== "undefined" && navigator.onLine === false ? "offline" : "error");
+    } finally {
+      busyRef.current = false;
+    }
+  }, [crypto, originals, seedTasks]);
+
+  /* First sync once the local board has loaded, then whenever the phone comes
+     back to the screen, and on a slow timer in case it never leaves. */
+  useEffect(() => {
+    if (!ready || !crypto?.key) return undefined;
+    runSync();
+    const onWake = () => {
+      if (document.visibilityState === "visible") runSync();
+    };
+    const timer = setInterval(runSync, 45000);
+    document.addEventListener("visibilitychange", onWake);
+    window.addEventListener("online", runSync);
+    return () => {
+      clearInterval(timer);
+      document.removeEventListener("visibilitychange", onWake);
+      window.removeEventListener("online", runSync);
+    };
+  }, [ready, crypto, runSync]);
+
+  /* Push soon after a change, so the other person sees it without waiting for
+     the timer, but not on every keystroke. */
+  useEffect(() => {
+    if (!ready || !crypto?.key || !dirtyRef.current) return undefined;
+    const t = setTimeout(runSync, 2500);
+    return () => clearTimeout(t);
+  }, [tasks, sent, supplies, drops, tombstones, ready, crypto, runSync]);
 
   const exportBlob = useCallback(
     () => ({
@@ -188,5 +280,6 @@ export function useBoard(caseload, today) {
     ready, tasks, openTasks, sent, supplies, drops,
     setSent, setDrops, toggle, setLaneOf, remove, add, addQuick, update, toggleSupply,
     exportBlob, importBlob,
+    shared: !!crypto?.key, syncState, lastSync, syncNow: runSync,
   };
 }

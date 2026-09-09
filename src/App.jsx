@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { S, CSS } from "./styles.js";
+import { S, CSS, LINE, HOT } from "./styles.js";
 import { Toast } from "./components/bits.jsx";
 import { DayTab } from "./components/DayTab.jsx";
 import { FamiliesTab } from "./components/FamiliesTab.jsx";
@@ -13,20 +13,30 @@ import { useBoard } from "./lib/board.js";
 import { useSwipe } from "./lib/swipe.js";
 import { copyText } from "./lib/clipboard.js";
 import { available as storageAvailable } from "./lib/storage.js";
+import { readWho, writeWho, laneLabels, PEOPLE } from "./lib/identity.js";
 import { resolveToday, addDays, iso, dueInfo } from "./lib/dates.js";
 import { visitsOn, nextVisitDay } from "./lib/schedule.js";
 
 const TABS = ["day", "families", "texts", "print"];
 const TAB_LABELS = [["day", "Day"], ["families", "Families"], ["texts", "Texts"], ["print", "Print"]];
-const LANE_FILTERS = [["all", "All"], ["sky", "Me"], ["mo", "Mo"]];
+
+/* How the sharing state reads in the header. Deliberately quiet: this only
+   needs attention when it is failing. */
+const SYNC = {
+  idle:    { mark: "✓", color: "#5FBF77", label: "Shared and up to date" },
+  syncing: { mark: "↻", color: "#B9AECE", label: "Syncing" },
+  offline: { mark: "○", color: "#B9AECE", label: "Offline, will sync when you are back" },
+  error:   { mark: "!", color: HOT,       label: "Could not sync, tap to try again" },
+  off:     { mark: "·", color: "#B9AECE", label: "Not shared" },
+};
 
 /** Monday of the week `d` falls in, for the printed header. */
 const weekStartOf = (d) => addDays(d, -((d.getDay() + 6) % 7));
 
-export default function App({ caseload, onLock }) {
+export default function App({ caseload, onLock, crypto }) {
   const { families } = caseload;
   const today = useMemo(() => resolveToday(), []);
-  const board = useBoard(caseload, today);
+  const board = useBoard(caseload, today, crypto);
 
   const [tab, setTab] = useState("day");
   const [lane, setLane] = useState("all");
@@ -35,6 +45,7 @@ export default function App({ caseload, onLock }) {
   const [backupOpen, setBackupOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [searching, setSearching] = useState(false);
+  const [who, setWho] = useState(() => readWho());
   const [toast, setToast] = useState(null);
   const toastTimer = useRef(null);
   const undoRef = useRef(null);
@@ -169,7 +180,7 @@ export default function App({ caseload, onLock }) {
           <div style={S.mark}>sky<span style={{ color: "#F2687E" }}>+</span>mo</div>
           <div style={S.headRight}>
             <div style={S.seg}>
-              {LANE_FILTERS.map(([k, l]) => (
+              {laneLabels(who).map(([k, l]) => (
                 <button
                   key={k}
                   onClick={() => setLane(k)}
@@ -188,6 +199,18 @@ export default function App({ caseload, onLock }) {
             >
               <span aria-hidden="true">⌕</span>
             </button>
+            {board.shared && (
+              <button
+                onClick={board.syncNow}
+                style={{ ...S.iconBtn, borderColor: SYNC[board.syncState]?.color || LINE }}
+                aria-label={`Sharing: ${SYNC[board.syncState]?.label || "off"}. Tap to sync now.`}
+                title={SYNC[board.syncState]?.label}
+              >
+                <span aria-hidden="true" style={{ fontSize: 13, color: SYNC[board.syncState]?.color }}>
+                  {SYNC[board.syncState]?.mark || "·"}
+                </span>
+              </button>
+            )}
             <button
               onClick={() => setBackupOpen(true)}
               style={S.iconBtn}
@@ -229,6 +252,27 @@ export default function App({ caseload, onLock }) {
         )}
       </header>
 
+      {board.shared && !who && (
+        <div style={{ ...S.nudge, margin: "18px 16px 0", background: "#F4F1F9", borderColor: LINE }} className="noprint">
+          <div style={S.nudgeTitle}>Whose phone is this?</div>
+          <div style={S.nudgeSub}>
+            This board is shared, so it needs to know which of you is holding it.
+            It only changes what the labels say.
+          </div>
+          <div style={{ ...S.rowWrap, marginTop: 10, marginBottom: 0 }}>
+            {PEOPLE.map(([k, l]) => (
+              <button
+                key={k}
+                onClick={(e) => { e.stopPropagation(); writeWho(k); setWho(k); }}
+                style={{ ...S.mini, ...S.miniOn }}
+              >
+                {l}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
       <main style={S.main} className={showPrint ? "" : "noprint"}>
         {searching && searchResult && (
           <SearchResults
@@ -254,6 +298,7 @@ export default function App({ caseload, onLock }) {
             drops={board.drops}
             today={today}
             board={boardWithUndo}
+            who={who}
             onFlash={flash}
             onBack={() => setOpenId(null)}
           />
@@ -293,6 +338,7 @@ export default function App({ caseload, onLock }) {
             setSent={board.setSent}
             copy={copy}
             initialDay={reminderDay}
+            onFlash={flash}
           />
         )}
 
@@ -330,6 +376,9 @@ export default function App({ caseload, onLock }) {
           exportBlob={board.exportBlob}
           importBlob={board.importBlob}
           onLock={onLock}
+          shared={board.shared}
+          who={who}
+          setWho={(k) => { writeWho(k); setWho(k); }}
           today={today}
           flash={flash}
           storageOk={storageOk}
