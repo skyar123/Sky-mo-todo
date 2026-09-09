@@ -109,10 +109,12 @@ export default function App({ caseload, onLock, crypto }) {
 
   const byId = useMemo(() => new Map(families.map((c) => [c.id, c])), [families]);
 
-  /* What the other person did while this device was not looking. */
+  /* What the other person did while this device was not looking. Reads all
+     tasks, not just open ones: "Mo ticked that off" is the single most useful
+     thing to know, and a completed task is no longer in the open list. */
   const theirChanges = useMemo(
-    () => changesFromOther(board.openTasks, who, seenAt),
-    [board.openTasks, who, seenAt]
+    () => changesFromOther(board.tasks, who, seenAt),
+    [board.tasks, who, seenAt]
   );
   const changedFamilies = useMemo(
     () => new Set(theirChanges.map((t) => t.client).filter(Boolean)),

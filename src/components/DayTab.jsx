@@ -39,7 +39,8 @@ export function DayTab({ caseload, today, counts, supplies, soon, openCount, uns
           <div style={S.nudgeSub}>
             {theirChanges.slice(0, 3).map((t) => {
               const f = t.client ? familyById.get(t.client) : null;
-              return `${f ? f.name + " · " : ""}${t.text}`;
+              /* A tick and an edit read very differently, so say which. */
+              return `${t.done ? "✓ " : ""}${f ? f.name + " · " : ""}${t.text}`;
             }).join(" — ")}
             {theirChanges.length > 3 ? ` — and ${theirChanges.length - 3} more` : ""}
           </div>
