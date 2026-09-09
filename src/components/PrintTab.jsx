@@ -4,10 +4,17 @@ import { LONG, fmtDay, dueInfo } from "../lib/dates.js";
 import { isScheduled, timeKey } from "../lib/schedule.js";
 
 const DAY_ORDER = [1, 2, 3, 4, 5, 6, 0];
-const WHO = [["mo", "Mo's list"], ["sky", "My list"], ["all", "Everything"]];
+/* Two people print this now, so the buttons follow whoever is holding the
+   phone while the printed title always names the actual person. A sheet that
+   says "My list" on paper tells the other one nothing. */
+function whoOptions(me) {
+  if (me === "mo") return [["mo", "My list"], ["sky", "Skylar's list"], ["all", "Everything"]];
+  if (me === "sky") return [["sky", "My list"], ["mo", "Mo's list"], ["all", "Everything"]];
+  return [["sky", "Skylar's list"], ["mo", "Mo's list"], ["all", "Everything"]];
+}
 
-export function PrintTab({ families, openTasks, supplies, today, weekStart, flash }) {
-  const [who, setWho] = useState("mo");
+export function PrintTab({ families, openTasks, supplies, today, weekStart, me, flash }) {
+  const [who, setWho] = useState(() => (me === "mo" ? "mo" : "sky"));
   const rows = openTasks.filter((x) => who === "all" || x.lane === who || x.lane === "both");
 
   const byDay = {};
@@ -22,6 +29,7 @@ export function PrintTab({ families, openTasks, supplies, today, weekStart, flas
   }
   const loose = rows.filter((x) => !x.client);
   const title = who === "mo" ? "Mo" : who === "sky" ? "Skylar" : "Skylar and Mo";
+  const printedFor = who === "all" ? "Both lists" : `${title}'s list`;
 
   return (
     <>
@@ -29,7 +37,7 @@ export function PrintTab({ families, openTasks, supplies, today, weekStart, flas
         <div style={S.h1}>Print</div>
         <div style={S.sub}>Plain paper, big boxes, grouped by the day you see each family.</div>
         <div style={S.rowWrap}>
-          {WHO.map(([k, l]) => (
+          {whoOptions(me).map(([k, l]) => (
             <button
               key={k}
               onClick={() => setWho(k)}
@@ -54,7 +62,9 @@ export function PrintTab({ families, openTasks, supplies, today, weekStart, flas
       <div className="sheet" style={S.sheet}>
         <div style={S.sheetHead}>
           <div style={S.sheetTitle}>{title} · week of {fmtDay(weekStart)}</div>
-          <div style={S.sheetSub}>Child First · {rows.length + loose.length === 0 ? "nothing open" : `${rows.length} open`}</div>
+          <div style={S.sheetSub}>
+            Child First · {printedFor} · {rows.length + loose.length === 0 ? "nothing open" : `${rows.length} open`}
+          </div>
         </div>
 
         {DAY_ORDER.map((d) => {

@@ -34,17 +34,17 @@ const server = spawn("npx", ["vite", "preview", "--port", String(PORT), "--stric
   env: childEnv,
 });
 
-async function waitForServer(tries = 40) {
+async function waitFor(url, what, tries = 60) {
   for (let i = 0; i < tries; i++) {
     try {
-      const r = await fetch(BASE, { signal: AbortSignal.timeout(1000) });
+      const r = await fetch(url, { signal: AbortSignal.timeout(1000) });
       if (r.ok) return;
     } catch {
       /* not up yet */
     }
     await sleep(250);
   }
-  throw new Error("preview server never came up");
+  throw new Error(`${what} never came up`);
 }
 
 /* The board endpoint must actually reach the stub. If the proxy is not wired,
@@ -63,7 +63,10 @@ async function assertApiProxy() {
 
 let failed = false;
 try {
-  await waitForServer();
+  /* Both, and the stub first: the proxy answers 500 while its upstream is
+     still starting, which reads like a misconfiguration rather than a race. */
+  await waitFor(`http://localhost:${API_PORT}/api/board`, "api stub");
+  await waitFor(BASE, "preview server");
   await assertApiProxy();
   console.log("\n— end to end —");
   await run("node", ["tests/e2e.mjs"], { env: { ...childEnv, BASE } });

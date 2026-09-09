@@ -40,7 +40,13 @@ async function openDevice(label, person) {
     page.on("response", async (r) => {
       if (!r.url().includes("/api/board")) return;
       let extra = "";
-      if (r.request().method() === "PUT") { try { extra = " " + JSON.stringify(await r.json()); } catch {} }
+      if (r.request().method() === "PUT") {
+        try {
+          extra = " " + JSON.stringify(await r.json());
+        } catch {
+          extra = " (no body)";
+        }
+      }
       console.log(`    [${label}] ${r.request().method()} ${r.status()}${extra}`);
     });
     page.on("console", (m) => { if (m.type() === "error") console.log(`    [${label}] console: ${m.text().slice(0,160)}`); });

@@ -28,3 +28,18 @@ export function assignLabels(who) {
   if (who === "mo") return [["mo", "Me"], ["sky", "Skylar"], ["both", "Both"]];
   return [["sky", "Me"], ["mo", "Mo"], ["both", "Both"]];
 }
+
+/* When this device last caught up on the other person's changes. Device
+   scoped, not shared: what Skylar has seen is not what Mo has seen. */
+const SEEN = "seen-at";
+
+export const readSeenAt = () => Number(readJSON(SEEN)) || 0;
+export const writeSeenAt = (at) => writeJSON(SEEN, at);
+
+export const nameOf = (who) => (who === "mo" ? "Mo" : who === "sky" ? "Skylar" : "someone");
+
+/** Open tasks the other person changed since this device last looked. */
+export function changesFromOther(tasks, me, seenAt) {
+  if (!me) return [];
+  return tasks.filter((t) => t.by && t.by !== me && (t.updatedAt || 0) > seenAt);
+}

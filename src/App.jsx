@@ -13,7 +13,7 @@ import { useBoard } from "./lib/board.js";
 import { useSwipe } from "./lib/swipe.js";
 import { copyText } from "./lib/clipboard.js";
 import { available as storageAvailable } from "./lib/storage.js";
-import { readWho, writeWho, laneLabels, PEOPLE } from "./lib/identity.js";
+import { readWho, writeWho, laneLabels, PEOPLE, readSeenAt, writeSeenAt, changesFromOther, nameOf } from "./lib/identity.js";
 import { resolveToday, addDays, iso, dueInfo } from "./lib/dates.js";
 import { visitsOn, nextVisitDay } from "./lib/schedule.js";
 
@@ -36,7 +36,13 @@ const weekStartOf = (d) => addDays(d, -((d.getDay() + 6) % 7));
 export default function App({ caseload, onLock, crypto }) {
   const { families } = caseload;
   const today = useMemo(() => resolveToday(), []);
-  const board = useBoard(caseload, today, crypto);
+
+  /* Declared before useBoard: the board stamps changes with whoever is holding
+     the device, so it needs this value on the first render. */
+  const [who, setWho] = useState(() => readWho());
+  const [seenAt, setSeenAt] = useState(() => readSeenAt());
+
+  const board = useBoard(caseload, today, crypto, who);
 
   const [tab, setTab] = useState("day");
   const [lane, setLane] = useState("all");
@@ -45,7 +51,6 @@ export default function App({ caseload, onLock, crypto }) {
   const [backupOpen, setBackupOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [searching, setSearching] = useState(false);
-  const [who, setWho] = useState(() => readWho());
   const [toast, setToast] = useState(null);
   const toastTimer = useRef(null);
   const undoRef = useRef(null);
@@ -103,6 +108,21 @@ export default function App({ caseload, onLock, crypto }) {
   }, [laneTasks, today]);
 
   const byId = useMemo(() => new Map(families.map((c) => [c.id, c])), [families]);
+
+  /* What the other person did while this device was not looking. */
+  const theirChanges = useMemo(
+    () => changesFromOther(board.openTasks, who, seenAt),
+    [board.openTasks, who, seenAt]
+  );
+  const changedFamilies = useMemo(
+    () => new Set(theirChanges.map((t) => t.client).filter(Boolean)),
+    [theirChanges]
+  );
+  const catchUp = useCallback(() => {
+    const now = Date.now();
+    writeSeenAt(now);
+    setSeenAt(now);
+  }, []);
 
   const soon = useMemo(
     () =>
@@ -310,6 +330,10 @@ export default function App({ caseload, onLock, crypto }) {
             today={today}
             counts={counts}
             supplies={board.supplies}
+            changedFamilies={changedFamilies}
+            theirChanges={theirChanges}
+            theirName={nameOf(who === "sky" ? "mo" : "sky")}
+            onCatchUp={catchUp}
             soon={soon}
             openCount={laneTasks.length}
             unsent={unsent}
@@ -326,6 +350,7 @@ export default function App({ caseload, onLock, crypto }) {
             families={families}
             counts={counts}
             supplies={board.supplies}
+            changedFamilies={changedFamilies}
             onOpenFamily={goFamily}
           />
         )}
@@ -349,6 +374,7 @@ export default function App({ caseload, onLock, crypto }) {
             supplies={board.supplies}
             today={today}
             weekStart={weekStartOf(today)}
+            me={who}
             flash={flash}
           />
         )}

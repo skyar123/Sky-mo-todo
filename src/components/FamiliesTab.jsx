@@ -6,7 +6,7 @@ import { isScheduled, timeKey } from "../lib/schedule.js";
 
 const DAY_ORDER = [1, 2, 3, 4, 5, 6, 0];
 
-export function FamiliesTab({ families, counts, supplies, onOpenFamily }) {
+export function FamiliesTab({ families, counts, supplies, changedFamilies, onOpenFamily }) {
   return (
     <>
       <div style={S.h1}>Families</div>
@@ -26,6 +26,7 @@ export function FamiliesTab({ families, counts, supplies, onOpenFamily }) {
                 count={counts[c.id]?.open || 0}
                 overdue={counts[c.id]?.overdue || 0}
                 supplies={supplies[c.id]}
+                changed={changedFamilies?.has(c.id)}
                 onClick={() => onOpenFamily(c.id)}
               />
             ))}

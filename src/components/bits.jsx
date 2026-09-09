@@ -24,7 +24,7 @@ export function Field({ label, body }) {
   );
 }
 
-export function VisitRow({ c, count, overdue, supplies, onClick }) {
+export function VisitRow({ c, count, overdue, supplies, changed, onClick }) {
   const bring = supplies && supplies.length ? supplies.join(", ").toLowerCase() : "";
   return (
     <button onClick={onClick} style={S.visit}>
@@ -34,6 +34,13 @@ export function VisitRow({ c, count, overdue, supplies, onClick }) {
         <span style={S.visitName}>{c.name}</span>
         {bring && <span style={S.supLine}>bring {bring}</span>}
       </span>
+      {changed && (
+        <span
+          style={{ ...S.dot, width: 7, height: 7, background: "#5C6BD8" }}
+          title="Changed since you last looked"
+          aria-label="Changed since you last looked"
+        />
+      )}
       {overdue > 0 && (
         <span style={S.visitFlag} title={`${overdue} overdue`}>{overdue} late</span>
       )}

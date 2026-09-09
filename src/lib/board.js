@@ -16,7 +16,7 @@ const SENT_KEEP_DAYS = 60;
 const EDITABLE = ["text", "due", "note", "client", "kind"];
 
 function pickSeedState(task, original) {
-  const state = { done: !!task.done, lane: task.lane, updatedAt: task.updatedAt || 0 };
+  const state = { done: !!task.done, lane: task.lane, updatedAt: task.updatedAt || 0, by: task.by };
   if (!original) return state;
   for (const k of EDITABLE) {
     if (task[k] !== original[k]) state[k] = task[k];
@@ -29,7 +29,7 @@ function hydrate(seedTasks, saved) {
   const seeded = seedTasks.map((t) => {
     const s = seedState[t.id];
     if (!s) return t;
-    const merged = { ...t, done: !!s.done, lane: s.lane || t.lane, updatedAt: s.updatedAt || 0 };
+    const merged = { ...t, done: !!s.done, lane: s.lane || t.lane, updatedAt: s.updatedAt || 0, by: s.by };
     for (const k of EDITABLE) {
       if (Object.prototype.hasOwnProperty.call(s, k)) merged[k] = s[k];
     }
@@ -51,7 +51,7 @@ function pruneSent(sent, today) {
   return out;
 }
 
-export function useBoard(caseload, today, crypto) {
+export function useBoard(caseload, today, crypto, me) {
   const { families, seedTasks } = caseload;
   const originals = useMemo(() => new Map(seedTasks.map((t) => [t.id, t])), [seedTasks]);
 
@@ -119,9 +119,13 @@ export function useBoard(caseload, today, crypto) {
   const touch = useCallback((id, patch) => {
     dirtyRef.current = true;
     setTasks((p) =>
-      p.map((x) => (x.id === id ? { ...x, ...(typeof patch === "function" ? patch(x) : patch), updatedAt: Date.now() } : x))
+      p.map((x) =>
+        x.id === id
+          ? { ...x, ...(typeof patch === "function" ? patch(x) : patch), updatedAt: Date.now(), by: me || "unknown" }
+          : x
+      )
     );
-  }, []);
+  }, [me]);
 
   const mark = useCallback((group, key) => {
     dirtyRef.current = true;
@@ -152,16 +156,17 @@ export function useBoard(caseload, today, crypto) {
       setTasks((p) => {
         if (p.some((x) => x.id === removed.task.id)) return p;
         const next = [...p];
-        next.splice(Math.min(removed.index, next.length), 0, { ...removed.task, updatedAt: Date.now() });
+        next.splice(Math.min(removed.index, next.length), 0, { ...removed.task, updatedAt: Date.now(), by: me || "unknown" });
         return next;
       });
     };
-  }, []);
+  }, [me]);
+
   const add = useCallback((made) => {
     dirtyRef.current = true;
     const at = Date.now();
-    setTasks((p) => [...made.map((t) => ({ ...t, updatedAt: at })), ...p]);
-  }, []);
+    setTasks((p) => [...made.map((t) => ({ ...t, updatedAt: at, by: me || "unknown" })), ...p]);
+  }, [me]);
 
   /* Field-level edit. Used by the inline editor, so every keystroke lands on
      the task itself and the debounced save picks it up. */
@@ -176,10 +181,10 @@ export function useBoard(caseload, today, crypto) {
         lane, kind, text: text.trim(), due, note: "", done: false, seed: false,
       };
       dirtyRef.current = true;
-      setTasks((p) => [{ ...task, updatedAt: Date.now() }, ...p]);
+      setTasks((p) => [{ ...task, updatedAt: Date.now(), by: me || "unknown" }, ...p]);
       return task;
     },
-    []
+    [me]
   );
 
   const toggleSupply = useCallback((famId, item) => {

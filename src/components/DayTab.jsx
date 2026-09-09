@@ -6,7 +6,7 @@ import { LONG, fmtDay, dueInfo, spokenDate } from "../lib/dates.js";
 import { agendaFor, nextVisitDay } from "../lib/schedule.js";
 import { buildICS, downloadICS, icsFilename } from "../lib/ics.js";
 
-export function DayTab({ caseload, today, counts, supplies, soon, openCount, unsent, reminderDay, familyById, onFlash, onOpenFamily, onGoTexts }) {
+export function DayTab({ caseload, today, counts, supplies, soon, openCount, unsent, reminderDay, familyById, changedFamilies, theirChanges, theirName, onCatchUp, onFlash, onOpenFamily, onGoTexts }) {
   const { families, blocks } = caseload;
   const agenda = agendaFor(families, blocks, today);
   const ahead = agenda.length ? null : nextVisitDay(families, today);
@@ -31,6 +31,22 @@ export function DayTab({ caseload, today, counts, supplies, soon, openCount, uns
         {fmtDay(today)} · {openCount} open · swipe to change tabs
       </div>
 
+      {theirChanges.length > 0 && (
+        <button onClick={onCatchUp} style={{ ...S.nudge, marginTop: 0, marginBottom: 18, background: "#F2F1FB", borderColor: "#CFCAEB" }}>
+          <div style={S.nudgeTitle}>
+            {theirChanges.length} {theirChanges.length === 1 ? "change" : "changes"} from {theirName}
+          </div>
+          <div style={S.nudgeSub}>
+            {theirChanges.slice(0, 3).map((t) => {
+              const f = t.client ? familyById.get(t.client) : null;
+              return `${f ? f.name + " · " : ""}${t.text}`;
+            }).join(" — ")}
+            {theirChanges.length > 3 ? ` — and ${theirChanges.length - 3} more` : ""}
+          </div>
+          <div style={{ ...S.nudgeSub, marginTop: 6, opacity: 0.5 }}>Tap to mark as seen</div>
+        </button>
+      )}
+
       {agenda.map((item, i) =>
         item.kind === "visit" ? (
           <VisitRow
@@ -39,6 +55,7 @@ export function DayTab({ caseload, today, counts, supplies, soon, openCount, uns
             count={counts[item.c.id]?.open || 0}
             overdue={counts[item.c.id]?.overdue || 0}
             supplies={supplies[item.c.id]}
+            changed={changedFamilies.has(item.c.id)}
             onClick={() => onOpenFamily(item.c.id)}
           />
         ) : (
@@ -63,6 +80,7 @@ export function DayTab({ caseload, today, counts, supplies, soon, openCount, uns
                     count={counts[item.c.id]?.open || 0}
                     overdue={counts[item.c.id]?.overdue || 0}
                     supplies={supplies[item.c.id]}
+                    changed={changedFamilies.has(item.c.id)}
                     onClick={() => onOpenFamily(item.c.id)}
                   />
                 ) : (

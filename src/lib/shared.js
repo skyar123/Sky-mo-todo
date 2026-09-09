@@ -18,11 +18,16 @@ const EDITABLE = ["text", "due", "note", "client", "kind"];
    overwrite it. Untouched means zero, which always loses to a real edit. */
 const UNTOUCHED = 0;
 
+/* `by` records which of them last changed an entry, so the other one can be
+   shown what moved while they were not looking. It travels with the entry, so
+   a merge carries the original author rather than the device that relayed it. */
+
 /** Only what a person changed about a seeded task; user tasks travel whole. */
 function taskEntry(task, original) {
   const at = task.updatedAt || UNTOUCHED;
-  if (!task.seed) return { seed: false, task, updatedAt: at };
-  const entry = { seed: true, done: !!task.done, lane: task.lane, updatedAt: at };
+  const by = task.by;
+  if (!task.seed) return { seed: false, task, updatedAt: at, by };
+  const entry = { seed: true, done: !!task.done, lane: task.lane, updatedAt: at, by };
   if (original) {
     for (const k of EDITABLE) if (task[k] !== original[k]) entry[k] = task[k];
   }
@@ -84,7 +89,7 @@ export function fromShared(doc, seedTasks) {
   const seeded = seedTasks.map((t) => {
     const e = entries[t.id];
     if (!e || e.deleted) return t;
-    const merged = { ...t, done: !!e.done, lane: e.lane || t.lane, updatedAt: e.updatedAt };
+    const merged = { ...t, done: !!e.done, lane: e.lane || t.lane, updatedAt: e.updatedAt, by: e.by };
     for (const k of EDITABLE) {
       if (Object.prototype.hasOwnProperty.call(e, k)) merged[k] = e[k];
     }
@@ -97,7 +102,7 @@ export function fromShared(doc, seedTasks) {
       tombstones[id] = e.updatedAt;
       continue;
     }
-    if (e.seed === false && e.task) user.push({ ...e.task, id, updatedAt: e.updatedAt });
+    if (e.seed === false && e.task) user.push({ ...e.task, id, updatedAt: e.updatedAt, by: e.by });
   }
   user.sort((x, y) => (y.updatedAt || 0) - (x.updatedAt || 0));
 
