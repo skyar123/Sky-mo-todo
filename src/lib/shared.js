@@ -12,10 +12,15 @@
 export const SHARED_VERSION = 1;
 const EDITABLE = ["text", "due", "note", "client", "kind"];
 
-const stamp = () => Date.now();
+/* An entry this device has never touched carries no timestamp, and must not
+   be given one. Stamping it with "now" would make a device that merely
+   reloaded look newer than the other person's real change, and quietly
+   overwrite it. Untouched means zero, which always loses to a real edit. */
+const UNTOUCHED = 0;
 
 /** Only what a person changed about a seeded task; user tasks travel whole. */
-function taskEntry(task, original, at) {
+function taskEntry(task, original) {
+  const at = task.updatedAt || UNTOUCHED;
   if (!task.seed) return { seed: false, task, updatedAt: at };
   const entry = { seed: true, done: !!task.done, lane: task.lane, updatedAt: at };
   if (original) {
@@ -24,24 +29,28 @@ function taskEntry(task, original, at) {
   return entry;
 }
 
-/** Local board state to the shared document. */
-export function toShared({ tasks, sent, supplies, drops, tombstones = {} }, originals, at = stamp()) {
+/**
+ * Local board state to the shared document.
+ * `stamps` holds when this device last changed each non-task entry.
+ */
+export function toShared({ tasks, sent, supplies, drops, tombstones = {}, stamps = {} }, originals) {
   const doc = { v: SHARED_VERSION, tasks: {}, sent: {}, supplies: {}, drops: {} };
+  const when = (group, k) => stamps?.[group]?.[k] || UNTOUCHED;
 
   for (const t of tasks) {
-    doc.tasks[t.id] = taskEntry(t, originals.get(t.id), t.updatedAt || at);
+    doc.tasks[t.id] = taskEntry(t, originals.get(t.id));
   }
   for (const [id, deletedAt] of Object.entries(tombstones)) {
     doc.tasks[id] = { deleted: true, updatedAt: deletedAt };
   }
   for (const [k, v] of Object.entries(sent || {})) {
-    doc.sent[k] = { v: !!v, updatedAt: at };
+    doc.sent[k] = { v: !!v, updatedAt: when("sent", k) };
   }
   for (const [k, v] of Object.entries(supplies || {})) {
-    doc.supplies[k] = { v, updatedAt: at };
+    doc.supplies[k] = { v, updatedAt: when("supplies", k) };
   }
   for (const [k, v] of Object.entries(drops || {})) {
-    doc.drops[k] = { v, updatedAt: at };
+    doc.drops[k] = { v, updatedAt: when("drops", k) };
   }
   return doc;
 }
@@ -93,6 +102,7 @@ export function fromShared(doc, seedTasks) {
   user.sort((x, y) => (y.updatedAt || 0) - (x.updatedAt || 0));
 
   const plain = (m) => Object.fromEntries(Object.entries(m || {}).map(([k, e]) => [k, e.v]));
+  const times = (m) => Object.fromEntries(Object.entries(m || {}).map(([k, e]) => [k, e.updatedAt || 0]));
 
   return {
     tasks: [...user, ...seeded],
@@ -100,5 +110,8 @@ export function fromShared(doc, seedTasks) {
     supplies: plain(doc?.supplies),
     drops: plain(doc?.drops),
     tombstones,
+    /* Carried back so this device keeps the merged timestamps and does not
+       re-announce someone else's change as its own. */
+    stamps: { sent: times(doc?.sent), supplies: times(doc?.supplies), drops: times(doc?.drops) },
   };
 }

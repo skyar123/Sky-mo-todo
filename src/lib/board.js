@@ -16,7 +16,7 @@ const SENT_KEEP_DAYS = 60;
 const EDITABLE = ["text", "due", "note", "client", "kind"];
 
 function pickSeedState(task, original) {
-  const state = { done: !!task.done, lane: task.lane };
+  const state = { done: !!task.done, lane: task.lane, updatedAt: task.updatedAt || 0 };
   if (!original) return state;
   for (const k of EDITABLE) {
     if (task[k] !== original[k]) state[k] = task[k];
@@ -29,7 +29,7 @@ function hydrate(seedTasks, saved) {
   const seeded = seedTasks.map((t) => {
     const s = seedState[t.id];
     if (!s) return t;
-    const merged = { ...t, done: !!s.done, lane: s.lane || t.lane };
+    const merged = { ...t, done: !!s.done, lane: s.lane || t.lane, updatedAt: s.updatedAt || 0 };
     for (const k of EDITABLE) {
       if (Object.prototype.hasOwnProperty.call(s, k)) merged[k] = s[k];
     }
@@ -62,6 +62,9 @@ export function useBoard(caseload, today, crypto) {
   );
   const [drops, setDrops] = useState({});
   const [tombstones, setTombstones] = useState({});
+  /* When this device last changed each sent / supplies / drops entry. Without
+     this, a reload would present untouched entries as brand new. */
+  const [stamps, setStamps] = useState({ sent: {}, supplies: {}, drops: {} });
   const [ready, setReady] = useState(false);
   const [syncState, setSyncState] = useState(crypto?.key ? "idle" : "off");
   const [lastSync, setLastSync] = useState(null);
@@ -82,6 +85,7 @@ export function useBoard(caseload, today, crypto) {
       }
       if (saved.drops) setDrops(saved.drops);
       if (saved.tombstones) setTombstones(saved.tombstones);
+      if (saved.stamps) setStamps({ sent: {}, supplies: {}, drops: {}, ...saved.stamps });
     }
     setReady(true);
     // Runs once per unlock; the caseload does not change underneath us.
@@ -104,10 +108,11 @@ export function useBoard(caseload, today, crypto) {
         supplies,
         drops,
         tombstones,
+        stamps,
       });
     }, 400);
     return () => clearTimeout(saveRef.current);
-  }, [tasks, sent, supplies, drops, tombstones, ready, originals]);
+  }, [tasks, sent, supplies, drops, tombstones, stamps, ready, originals]);
 
   /* Every change is stamped. The merge is newest-wins per entry, so an
      unstamped edit would lose to whatever the other person did last. */
@@ -116,6 +121,11 @@ export function useBoard(caseload, today, crypto) {
     setTasks((p) =>
       p.map((x) => (x.id === id ? { ...x, ...(typeof patch === "function" ? patch(x) : patch), updatedAt: Date.now() } : x))
     );
+  }, []);
+
+  const mark = useCallback((group, key) => {
+    dirtyRef.current = true;
+    setStamps((p) => ({ ...p, [group]: { ...p[group], [key]: Date.now() } }));
   }, []);
 
   const toggle = useCallback((id) => touch(id, (x) => ({ done: !x.done })), [touch]);
@@ -173,12 +183,12 @@ export function useBoard(caseload, today, crypto) {
   );
 
   const toggleSupply = useCallback((famId, item) => {
-    dirtyRef.current = true;
+    mark("supplies", famId);
     setSupplies((p) => {
       const cur = p[famId] || [];
       return { ...p, [famId]: cur.includes(item) ? cur.filter((x) => x !== item) : [...cur, item] };
     });
-  }, []);
+  }, [mark]);
 
   /* --- sharing ---------------------------------------------------------
      Two people, one board. The server holds ciphertext and a revision number;
@@ -187,7 +197,7 @@ export function useBoard(caseload, today, crypto) {
      State is read through a ref so the sync callback keeps a stable identity.
      Otherwise every keystroke would rebuild it and restart the timers. */
   const stateRef = useRef(null);
-  stateRef.current = { tasks, sent, supplies, drops, tombstones };
+  stateRef.current = { tasks, sent, supplies, drops, tombstones, stamps };
 
   const runSync = useCallback(async () => {
     if (!crypto?.key || busyRef.current) return;
@@ -211,6 +221,7 @@ export function useBoard(caseload, today, crypto) {
       setSupplies((p) => ({ ...p, ...next.supplies }));
       setDrops(next.drops);
       setTombstones(next.tombstones);
+      setStamps(next.stamps);
       setSyncState("idle");
       setLastSync(Date.now());
     } catch {
@@ -246,7 +257,32 @@ export function useBoard(caseload, today, crypto) {
     if (!ready || !crypto?.key || !dirtyRef.current) return undefined;
     const t = setTimeout(runSync, 2500);
     return () => clearTimeout(t);
-  }, [tasks, sent, supplies, drops, tombstones, ready, crypto, runSync]);
+  }, [tasks, sent, supplies, drops, tombstones, stamps, ready, crypto, runSync]);
+
+  /* Wrapped so a caller cannot set one of these without recording when. */
+  const markedSetSent = useCallback(
+    (updater) =>
+      setSent((prev) => {
+        const next = typeof updater === "function" ? updater(prev) : updater;
+        for (const k of Object.keys(next)) {
+          if (next[k] !== prev[k]) mark("sent", k);
+        }
+        return next;
+      }),
+    [mark]
+  );
+
+  const markedSetDrops = useCallback(
+    (updater) =>
+      setDrops((prev) => {
+        const next = typeof updater === "function" ? updater(prev) : updater;
+        for (const k of Object.keys(next)) {
+          if (next[k] !== prev[k]) mark("drops", k);
+        }
+        return next;
+      }),
+    [mark]
+  );
 
   const exportBlob = useCallback(
     () => ({
@@ -278,7 +314,7 @@ export function useBoard(caseload, today, crypto) {
 
   return {
     ready, tasks, openTasks, sent, supplies, drops,
-    setSent, setDrops, toggle, setLaneOf, remove, add, addQuick, update, toggleSupply,
+    setSent: markedSetSent, setDrops: markedSetDrops, toggle, setLaneOf, remove, add, addQuick, update, toggleSupply,
     exportBlob, importBlob,
     shared: !!crypto?.key, syncState, lastSync, syncNow: runSync,
   };
