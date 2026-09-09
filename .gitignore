@@ -23,3 +23,8 @@ public/icon-*.png
 
 # Netlify local state
 .netlify
+
+# Throwaway debug scripts. Named with a leading underscore so they never
+# survive into a commit the way one already did.
+_*.mjs
+_*.js
