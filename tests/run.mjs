@@ -72,6 +72,8 @@ try {
   await run("node", ["tests/e2e.mjs"], { env: { ...childEnv, BASE } });
   console.log("\n— offline —");
   await run("node", ["tests/offline.mjs"], { env: { ...childEnv, BASE } });
+  console.log("\n— live calendar —");
+  await run("node", ["tests/calendar.mjs"], { env: { ...childEnv, BASE } });
   console.log("\n— handing files to the phone —");
   await run("node", ["tests/handoff.mjs"], { env: { ...childEnv, BASE } });
   console.log("\n— sharing —");

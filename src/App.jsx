@@ -16,7 +16,9 @@ import { copyText } from "./lib/clipboard.js";
 import { available as storageAvailable } from "./lib/storage.js";
 import { readWho, writeWho, laneLabels, PEOPLE, readSeenAt, writeSeenAt, changesFromOther, nameOf } from "./lib/identity.js";
 import { resolveToday, addDays, iso, dueInfo } from "./lib/dates.js";
-import { visitsOn, nextVisitDay } from "./lib/schedule.js";
+import { visitsOn, nextVisitDay, liveAgendaFor } from "./lib/schedule.js";
+import { useCalendar } from "./lib/useCalendar.js";
+import { detectFamily } from "./lib/parse.js";
 
 const TABS = ["day", "families", "texts", "print"];
 const TAB_LABELS = [["day", "Day"], ["families", "Families"], ["texts", "Texts"], ["print", "Print"]];
@@ -45,6 +47,7 @@ export default function App({ caseload, onLock, crypto }) {
   const [seenAt, setSeenAt] = useState(() => readSeenAt());
 
   const board = useBoard(caseload, today, crypto, who);
+  const calendar = useCalendar(today);
 
   const [tab, setTab] = useState("day");
   const [lane, setLane] = useState("all");
@@ -122,6 +125,12 @@ export default function App({ caseload, onLock, crypto }) {
     (item) => item.kind === "block" && !!teamingBlock && item.label === teamingBlock.label,
     [teamingBlock]
   );
+  /* Today, as the calendar has it. Null when this device is not connected. */
+  const liveToday = useMemo(
+    () => (calendar.events ? liveAgendaFor(calendar.events, today, families, detectFamily) : null),
+    [calendar.events, today, families]
+  );
+
   const agendaCount = useMemo(
     () => board.openTasks.filter((t) => t.agenda).length,
     [board.openTasks]
@@ -378,6 +387,8 @@ export default function App({ caseload, onLock, crypto }) {
             theirName={nameOf(who === "sky" ? "mo" : "sky")}
             agendaCount={agendaCount}
             isTeamingBlock={isTeamingBlock}
+            live={liveToday}
+            liveAsOf={calendar.fetchedAt}
             onOpenTeaming={() => { setTeamingOpen(true); setOpenId(null); }}
             onCatchUp={catchUp}
             soon={soon}
@@ -450,6 +461,7 @@ export default function App({ caseload, onLock, crypto }) {
           importBlob={board.importBlob}
           onLock={onLock}
           shared={board.shared}
+          calendar={calendar}
           who={who}
           setWho={(k) => { writeWho(k); setWho(k); }}
           today={today}

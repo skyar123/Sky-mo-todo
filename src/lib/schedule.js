@@ -48,3 +48,35 @@ export function upcomingVisitDays(families, from, count = 4, maxAhead = 21) {
   }
   return out;
 }
+
+
+/* --------------------------------------------------------------------------
+   The day, as the calendar actually has it.
+
+   The caseload's standing day and time are what someone typed; the calendar is
+   what is happening. When live events are available they win, and each one is
+   matched back to a family by the same aliases the note parser uses, so all the
+   prep for that family still hangs off it. Anything unmatched is shown as it is
+   written rather than hidden, because a visit missing from the board is worse
+   than one that is merely unlabelled. */
+
+export function liveAgendaFor(events, date, families, detectFamily) {
+  if (!Array.isArray(events)) return null;
+  const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+  const onDay = events.filter((e) => e.date === key);
+  if (!onDay.length) return [];
+
+  return onDay
+    .map((e) => {
+      const id = detectFamily(e.title, families);
+      const family = id ? families.find((f) => f.id === id) : null;
+      if (family) return { kind: "visit", time: e.time, c: family, live: true, title: e.title };
+      return { kind: "block", time: e.time, label: e.title, live: true, allDay: e.allDay };
+    })
+    .sort((a, b) => {
+      /* All-day entries are due dates and birthdays; they belong at the top. */
+      const at = a.time ? timeKey(a.time) : -1;
+      const bt = b.time ? timeKey(b.time) : -1;
+      return at - bt;
+    });
+}

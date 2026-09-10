@@ -7,6 +7,17 @@ import { agendaFor, nextVisitDay } from "../lib/schedule.js";
 import { buildICS, downloadICS, icsFilename } from "../lib/ics.js";
 import { handoffMessage } from "../lib/handoff.js";
 
+/* "12 minutes ago" is more use than a timestamp when the question is really
+   "is this current?". */
+function asOf(at) {
+  const mins = Math.round((Date.now() - at) / 60000);
+  if (mins < 1) return "just now";
+  if (mins < 60) return `${mins} min ago`;
+  const hours = Math.round(mins / 60);
+  if (hours < 24) return `${hours}h ago`;
+  return `${Math.round(hours / 24)}d ago`;
+}
+
 /* A standing meeting is just a line on the day, except teaming, which is the
    one you arrive at with a list. That one opens. */
 function BlockRow({ item, teaming, agendaCount, onOpenTeaming }) {
@@ -33,9 +44,17 @@ function BlockRow({ item, teaming, agendaCount, onOpenTeaming }) {
   );
 }
 
-export function DayTab({ caseload, today, counts, supplies, soon, openCount, unsent, reminderDay, familyById, changedFamilies, theirChanges, theirName, agendaCount, isTeamingBlock, onCatchUp, onOpenTeaming, onFlash, onOpenFamily, onGoTexts }) {
+export function DayTab({ caseload, today, counts, supplies, soon, openCount, unsent, reminderDay, familyById, changedFamilies, theirChanges, theirName, agendaCount, isTeamingBlock, live, liveAsOf, onCatchUp, onOpenTeaming, onFlash, onOpenFamily, onGoTexts }) {
   const { families, blocks } = caseload;
-  const agenda = agendaFor(families, blocks, today);
+  const standing = agendaFor(families, blocks, today);
+
+  /* The calendar wins when it has something to say about today. When it is
+     connected but empty for today, the standing slots are still shown, and
+     labelled, because a quiet calendar and a wrong board look identical
+     otherwise. */
+  const usingLive = Array.isArray(live) && live.length > 0;
+  const agenda = usingLive ? live : standing;
+  const liveButEmpty = Array.isArray(live) && live.length === 0;
   const ahead = agenda.length ? null : nextVisitDay(families, today);
 
   /* Due dates are only useful if they reach you when you are not looking at
@@ -54,8 +73,15 @@ export function DayTab({ caseload, today, counts, supplies, soon, openCount, uns
     <>
       <div style={S.h1}>{LONG[today.getDay()]}</div>
       <div style={S.sub}>
-        {fmtDay(today)} · {openCount} open · swipe to change tabs
+        {fmtDay(today)} · {openCount} open
+        {usingLive && liveAsOf ? ` · from your calendar, ${asOf(liveAsOf)}` : " · swipe to change tabs"}
       </div>
+
+      {liveButEmpty && (
+        <div style={{ ...S.tip, marginTop: -6, marginBottom: 12 }}>
+          Nothing on your calendar today. Showing the standing slots instead.
+        </div>
+      )}
 
       {theirChanges.length > 0 && (
         <button onClick={onCatchUp} style={{ ...S.nudge, marginTop: 0, marginBottom: 18, background: "#F2F1FB", borderColor: "#CFCAEB" }}>
@@ -83,6 +109,7 @@ export function DayTab({ caseload, today, counts, supplies, soon, openCount, uns
             overdue={counts[item.c.id]?.overdue || 0}
             supplies={supplies[item.c.id]}
             changed={changedFamilies.has(item.c.id)}
+            time={item.time}
             onClick={() => onOpenFamily(item.c.id)}
           />
         ) : (
@@ -111,6 +138,7 @@ export function DayTab({ caseload, today, counts, supplies, soon, openCount, uns
                     overdue={counts[item.c.id]?.overdue || 0}
                     supplies={supplies[item.c.id]}
                     changed={changedFamilies.has(item.c.id)}
+                    time={item.time}
                     onClick={() => onOpenFamily(item.c.id)}
                   />
                 ) : (

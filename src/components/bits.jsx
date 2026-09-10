@@ -24,11 +24,14 @@ export function Field({ label, body }) {
   );
 }
 
-export function VisitRow({ c, count, overdue, supplies, changed, onClick }) {
+/* `time` overrides the family's standing slot. Without it a row sourced from
+   the calendar would announce itself as live and then show the typed-in time,
+   which is worse than not being live at all. */
+export function VisitRow({ c, count, overdue, supplies, changed, time, onClick }) {
   const bring = supplies && supplies.length ? supplies.join(", ").toLowerCase() : "";
   return (
     <button onClick={onClick} style={S.visit}>
-      <span style={S.visitTime}>{c.time || "—"}</span>
+      <span style={S.visitTime}>{time || c.time || "—"}</span>
       <span style={{ ...S.dot, background: c.color }} aria-hidden="true" />
       <span style={{ flex: 1 }}>
         <span style={S.visitName}>{c.name}</span>

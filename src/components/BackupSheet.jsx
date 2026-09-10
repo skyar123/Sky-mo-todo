@@ -7,7 +7,7 @@ import { handOff } from "../lib/handoff.js";
 /* Everything the board remembers lives in one browser. Clearing site data,
    a new phone or a reinstall takes it with it, so a backup is not optional
    housekeeping. The file is written locally and never uploaded. */
-export function BackupSheet({ close, exportBlob, importBlob, onLock, who, setWho, shared, today, flash, storageOk }) {
+export function BackupSheet({ close, exportBlob, importBlob, onLock, who, setWho, shared, calendar, today, flash, storageOk }) {
   const file = useRef(null);
   const [confirmImport, setConfirmImport] = useState(null);
 
@@ -80,6 +80,57 @@ export function BackupSheet({ close, exportBlob, importBlob, onLock, who, setWho
             <div style={S.rule}>
               This browser is not saving anything. Private browsing or blocked site
               data will do that. Ticking boxes will not stick until that changes.
+            </div>
+          </div>
+        )}
+
+        {calendar && (
+          <div style={{ marginBottom: 18, borderBottom: `1px solid ${LINE}`, paddingBottom: 16 }}>
+            <div style={S.fieldLabel}>Google Calendar</div>
+            {calendar.connected ? (
+              <>
+                <div style={{ fontSize: 13.5, lineHeight: 1.5, marginBottom: 8 }}>
+                  Reading <strong>{calendar.calendar.summary}</strong>. Visit times on the day
+                  view come from there rather than from what was typed in.
+                </div>
+                <div style={S.rowWrap}>
+                  <button onClick={() => calendar.refresh({ interactive: true })} style={S.mini}>
+                    {calendar.status === "working" ? "Reading…" : "Refresh now"}
+                  </button>
+                  <button onClick={calendar.openChoices} style={S.mini}>Change calendar</button>
+                  <button onClick={calendar.disconnect} style={S.mini}>Disconnect</button>
+                </div>
+                {calendar.choices && (
+                  <div style={S.rowWrap}>
+                    {calendar.choices.map((c) => (
+                      <button
+                        key={c.id}
+                        onClick={() => calendar.choose(c)}
+                        style={{ ...S.mini, ...(c.id === calendar.calendar.id ? S.miniOn : {}) }}
+                        aria-pressed={c.id === calendar.calendar.id}
+                      >
+                        {c.summary}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </>
+            ) : (
+              <>
+                <div style={{ fontSize: 13.5, lineHeight: 1.5, marginBottom: 8 }}>
+                  Connect it and the day view shows what is actually on your calendar,
+                  instead of the times typed into the board.
+                </div>
+                <button onClick={calendar.connect} style={S.bigBtn}>
+                  {calendar.status === "working" ? "Connecting…" : "Connect Google Calendar"}
+                </button>
+              </>
+            )}
+            {calendar.error && <div style={{ ...S.tip, color: "#C62A40" }}>{calendar.error}</div>}
+            <div style={S.tip}>
+              Read only, and this device only. The calendars holding clients' legal names
+              are never listed or read. Nothing from your calendar is sent to the server
+              or shared with the other person.
             </div>
           </div>
         )}
