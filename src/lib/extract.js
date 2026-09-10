@@ -19,8 +19,8 @@ const BULLET = /^\s*[-•*▪·]\s+/;
    phrases are tested first so "bring to the clinical partner" does not fall
    through to the generic case. */
 const SECTIONS = [
-  { test: /safety\s*flag/i,                      lane: "both", kind: "admin", label: "Safety", urgent: true },
-  { test: /clinical partner|clinician|supervis/i, lane: "both", kind: "cpp",   label: "With the clinician" },
+  { test: /safety\s*flag/i,                      lane: "both", kind: "admin", label: "Safety", urgent: true, agenda: true },
+  { test: /clinical partner|clinician|supervis/i, lane: "both", kind: "cpp",   label: "With the clinician", agenda: true },
   { test: /before (the )?next visit|follow[- ]?up|to do|action/i, lane: "sky", kind: null, label: "Before next visit" },
 ];
 
@@ -108,6 +108,8 @@ export function extractFromNote(text, { families, today }) {
       due: detectDue(body, today),
       section: sec?.label || "From the note",
       urgent: !!sec?.urgent,
+      /* "Bring to the clinical partner" is literally the teaming agenda. */
+      agenda: !!sec?.agenda,
     });
   };
 
@@ -129,6 +131,7 @@ export function extractFromNote(text, { families, today }) {
           due: null,
           section: role === "individual" ? "Supervision, mine" : "Supervision, shared",
           urgent: false,
+          agenda: role !== "individual",
         });
       }
       pending = null;
@@ -192,6 +195,7 @@ export function itemsToTasks(items, { client, lane }) {
     text: i.text,
     due: i.due,
     note: i.note,
+    agenda: !!i.agenda,
     done: false,
     seed: false,
   }));

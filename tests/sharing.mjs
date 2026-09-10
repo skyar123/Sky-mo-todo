@@ -8,6 +8,9 @@
    Runs against tests/api-stub.mjs, which implements the same contract as the
    deployed function. */
 
+/* The board polls the shared endpoint, so the network never goes quiet.
+   "networkidle" would be a coin toss here; every wait below is for the thing
+   the next step actually needs. */
 import { chromium } from "playwright";
 import { loadFixture } from "./fixture.mjs";
 import { LONG } from "../src/lib/dates.js";
@@ -54,7 +57,7 @@ async function openDevice(label, person) {
       if (r.url().includes("/api/board")) console.log(`    [${label}] ${r.method()} FAILED ${r.failure()?.errorText}`);
     });
   }
-  await page.goto(`${BASE}/?date=${fx.todayIso}`, { waitUntil: "networkidle" });
+  await page.goto(`${BASE}/?date=${fx.todayIso}`, { waitUntil: "domcontentloaded" });
   await page.waitForSelector("#passcode:not([disabled])", { timeout: 20000 });
   await page.fill("#passcode", process.env.SKYMO_PASSCODE);
   await page.click('button[type="submit"]');
@@ -82,7 +85,7 @@ const openFamily = async (page) => {
 
 /* Reload, then give the board time to pull before believing what it shows. */
 const refresh = async (page) => {
-  await page.reload({ waitUntil: "networkidle" });
+  await page.reload({ waitUntil: "domcontentloaded" });
   await page.waitForSelector(`text=${day}`, { timeout: 30000 });
   await page.waitForTimeout(SETTLE);
   await openFamily(page);

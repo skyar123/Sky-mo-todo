@@ -13,7 +13,7 @@ const SENT_KEEP_DAYS = 60;
    alone is read fresh from the caseload on each load. That way updating the
    source file still reaches the board instead of being masked forever by a
    stale saved copy, while a real edit is never quietly reverted. */
-const EDITABLE = ["text", "due", "note", "client", "kind"];
+const EDITABLE = ["text", "due", "note", "client", "kind", "agenda"];
 
 function pickSeedState(task, original) {
   const state = { done: !!task.done, lane: task.lane, updatedAt: task.updatedAt || 0, by: task.by };
@@ -174,11 +174,11 @@ export function useBoard(caseload, today, crypto, me) {
 
   /* Quick add straight into a family, without opening the paste sheet. */
   const addQuick = useCallback(
-    ({ text, client, lane = "both", kind = "care", due = null }) => {
+    ({ text, client, lane = "both", kind = "care", due = null, agenda = false }) => {
       const task = {
         id: `u${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
         client: client || null,
-        lane, kind, text: text.trim(), due, note: "", done: false, seed: false,
+        lane, kind, text: text.trim(), due, note: "", agenda, done: false, seed: false,
       };
       dirtyRef.current = true;
       setTasks((p) => [{ ...task, updatedAt: Date.now(), by: me || "unknown" }, ...p]);

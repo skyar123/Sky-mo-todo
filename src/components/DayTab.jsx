@@ -6,7 +6,33 @@ import { LONG, fmtDay, dueInfo, spokenDate } from "../lib/dates.js";
 import { agendaFor, nextVisitDay } from "../lib/schedule.js";
 import { buildICS, downloadICS, icsFilename } from "../lib/ics.js";
 
-export function DayTab({ caseload, today, counts, supplies, soon, openCount, unsent, reminderDay, familyById, changedFamilies, theirChanges, theirName, onCatchUp, onFlash, onOpenFamily, onGoTexts }) {
+/* A standing meeting is just a line on the day, except teaming, which is the
+   one you arrive at with a list. That one opens. */
+function BlockRow({ item, teaming, agendaCount, onOpenTeaming }) {
+  if (!teaming) {
+    return (
+      <div style={S.blockRow}>
+        <span style={S.blockTime}>{item.time}</span>
+        <span>{item.label}</span>
+      </div>
+    );
+  }
+  return (
+    <button onClick={onOpenTeaming} style={{ ...S.visit, opacity: 1 }}>
+      <span style={S.visitTime}>{item.time}</span>
+      <span style={{ ...S.dot, background: "#5C6BD8" }} aria-hidden="true" />
+      <span style={{ flex: 1 }}>
+        <span style={{ ...S.visitName, fontSize: 15 }}>{item.label}</span>
+        <span style={S.supLine}>
+          {agendaCount > 0 ? `${agendaCount} to bring up` : "nothing on the list yet"}
+        </span>
+      </span>
+      {agendaCount > 0 && <span style={S.visitCount}>{agendaCount}</span>}
+    </button>
+  );
+}
+
+export function DayTab({ caseload, today, counts, supplies, soon, openCount, unsent, reminderDay, familyById, changedFamilies, theirChanges, theirName, agendaCount, isTeamingBlock, onCatchUp, onOpenTeaming, onFlash, onOpenFamily, onGoTexts }) {
   const { families, blocks } = caseload;
   const agenda = agendaFor(families, blocks, today);
   const ahead = agenda.length ? null : nextVisitDay(families, today);
@@ -60,10 +86,13 @@ export function DayTab({ caseload, today, counts, supplies, soon, openCount, uns
             onClick={() => onOpenFamily(item.c.id)}
           />
         ) : (
-          <div key={`b${i}`} style={S.blockRow}>
-            <span style={S.blockTime}>{item.time}</span>
-            <span>{item.label}</span>
-          </div>
+          <BlockRow
+            key={`b${i}`}
+            item={item}
+            teaming={isTeamingBlock(item)}
+            agendaCount={agendaCount}
+            onOpenTeaming={onOpenTeaming}
+          />
         )
       )}
 
@@ -85,10 +114,13 @@ export function DayTab({ caseload, today, counts, supplies, soon, openCount, uns
                     onClick={() => onOpenFamily(item.c.id)}
                   />
                 ) : (
-                  <div key={`ab${i}`} style={S.blockRow}>
-                    <span style={S.blockTime}>{item.time}</span>
-                    <span>{item.label}</span>
-                  </div>
+                  <BlockRow
+                    key={`ab${i}`}
+                    item={item}
+                    teaming={isTeamingBlock(item)}
+                    agendaCount={agendaCount}
+                    onOpenTeaming={onOpenTeaming}
+                  />
                 )
               )}
             </>

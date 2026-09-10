@@ -5,6 +5,9 @@
    caseload at run time. No family, child or task text is written into this
    file: the repo is public and the tests are not an exception to that. */
 
+/* The board polls the shared endpoint, so the network never goes quiet.
+   "networkidle" would be a coin toss here; every wait below is for the thing
+   the next step actually needs. */
 import { chromium } from "playwright";
 import { loadFixture } from "./fixture.mjs";
 import { spokenDate, LONG, fmtDay, addDays } from "../src/lib/dates.js";
@@ -29,7 +32,7 @@ const errors = [];
 page.on("pageerror", (e) => errors.push(String(e)));
 page.on("console", (m) => { if (m.type() === "error") errors.push("console: " + m.text()); });
 
-await page.goto(`${BASE}/?date=${fx.todayIso}`, { waitUntil: "networkidle" });
+await page.goto(`${BASE}/?date=${fx.todayIso}`, { waitUntil: "domcontentloaded" });
 
 /* --- locked --- */
 await page.waitForSelector("#passcode:not([disabled])", { timeout: 15000 });
@@ -92,7 +95,7 @@ await boxes.first().click();
 await page.waitForTimeout(700);
 check((await page.locator('main [role="checkbox"][aria-checked="true"]').count()) >= 1, "a task can be ticked");
 
-await page.reload({ waitUntil: "networkidle" });
+await page.reload({ waitUntil: "domcontentloaded" });
 await page.waitForSelector(`text=${LONG[fx.today.getDay()]}`, { timeout: 25000 });
 ok("stays unlocked across a reload (device key cached)");
 await openFamily(fam0.name);
@@ -162,6 +165,37 @@ await page.waitForTimeout(700);
 await openFamily(target.name);
 await page.waitForTimeout(400);
 check((await page.textContent("main")).includes(phrase), "a pasted note routes to the family it names");
+
+/* --- the teaming agenda --- */
+await page.click('button:has-text("Day")');
+await page.waitForSelector(`text=${LONG[fx.today.getDay()]}`);
+/* The teaming block may sit on a later day, so reach it from Families-free
+   navigation: the day view shows the next visit day's agenda when today has
+   none, and the block itself is the way in. */
+const teamingBtn = page.locator('button:has-text("Teaming")').first();
+if (await teamingBtn.count()) {
+  await teamingBtn.click();
+  await page.waitForSelector('input[aria-label="Add something to bring up at teaming"]', { timeout: 8000 });
+  ok("the teaming block opens its agenda");
+
+  const seeded = await page.textContent("main");
+  check(/fidelity form/i.test(seeded), "the week's teaming topic is already on the list");
+
+  const raise = `raise this ${Date.now().toString().slice(-4)}`;
+  await page.fill('input[aria-label="Add something to bring up at teaming"]', raise);
+  await page.locator('form button:text-is("Add")').click();
+  await page.waitForTimeout(600);
+  check((await page.textContent("main")).includes(raise), "something can be added to bring up");
+
+  /* It has to still be there after a reload, or it is not an agenda. */
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await page.waitForSelector(`text=${LONG[fx.today.getDay()]}`, { timeout: 25000 });
+  await page.locator('button:has-text("Teaming")').first().click();
+  await page.waitForSelector('input[aria-label="Add something to bring up at teaming"]');
+  check((await page.textContent("main")).includes(raise), "the agenda survives a reload");
+} else {
+  bad("no teaming block on the day view");
+}
 
 /* --- locking again --- */
 await page.click('button:has-text("‹ back")');

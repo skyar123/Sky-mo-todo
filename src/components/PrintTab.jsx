@@ -13,7 +13,7 @@ function whoOptions(me) {
   return [["sky", "Skylar's list"], ["mo", "Mo's list"], ["all", "Everything"]];
 }
 
-export function PrintTab({ families, openTasks, supplies, today, weekStart, me, flash }) {
+export function PrintTab({ families, openTasks, supplies, today, weekStart, me, teamingLabel, flash }) {
   const [who, setWho] = useState(() => (me === "mo" ? "mo" : "sky"));
   const rows = openTasks.filter((x) => who === "all" || x.lane === who || x.lane === "both");
 
@@ -28,6 +28,8 @@ export function PrintTab({ families, openTasks, supplies, today, weekStart, me, 
     byDay[k].sort((a, b) => timeKey(a.c.time) - timeKey(b.c.time));
   }
   const loose = rows.filter((x) => !x.client);
+  /* The agenda goes first: this sheet gets carried into the meeting. */
+  const agenda = openTasks.filter((x) => x.agenda);
   const title = who === "mo" ? "Mo" : who === "sky" ? "Skylar" : "Skylar and Mo";
   const printedFor = who === "all" ? "Both lists" : `${title}'s list`;
 
@@ -66,6 +68,24 @@ export function PrintTab({ families, openTasks, supplies, today, weekStart, me, 
             Child First · {printedFor} · {rows.length + loose.length === 0 ? "nothing open" : `${rows.length} open`}
           </div>
         </div>
+
+        {agenda.length > 0 && (
+          <div style={S.sheetDay}>
+            <div style={S.sheetDayName}>{teamingLabel || "To bring up at teaming"}</div>
+            {agenda.map((x) => {
+              const f = x.client ? families.find((c) => c.id === x.client) : null;
+              return (
+                <div key={`ag-${x.id}`} style={S.sheetRow}>
+                  <span style={S.sheetBox} />
+                  <span>
+                    {f ? <strong>{f.name}: </strong> : ""}
+                    {x.text}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        )}
 
         {DAY_ORDER.map((d) => {
           const g = byDay[d] || [];

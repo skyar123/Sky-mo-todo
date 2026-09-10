@@ -10,7 +10,7 @@
    straight back from the other's copy on the next sync. */
 
 export const SHARED_VERSION = 1;
-const EDITABLE = ["text", "due", "note", "client", "kind"];
+const EDITABLE = ["text", "due", "note", "client", "kind", "agenda"];
 
 /* An entry this device has never touched carries no timestamp, and must not
    be given one. Stamping it with "now" would make a device that merely

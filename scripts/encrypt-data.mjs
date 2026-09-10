@@ -9,7 +9,7 @@
 import { readFile, writeFile, access } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
-import { encryptJSON } from "../src/lib/crypto.js";
+import { encryptJSON, encryptWithKey, deriveKey, fromB64 } from "../src/lib/crypto.js";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const SRC_MJS = path.join(root, "data/caseload.source.mjs");
@@ -78,10 +78,34 @@ if (problems.length) {
   process.exit(1);
 }
 
-const payload = await encryptJSON(data, passcode);
+/* Keep the salt if there already is one.
+   A new salt means a new derived key, which would log both of them out on
+   every content update and invalidate the shared board's write token. The
+   passcode is what should decide the key, not the moment of encryption.
+   A wrong passcode still fails, because decryption fails; devices holding a
+   stale key are sent back to the lock screen by that failure. */
+let existingSalt = null;
+try {
+  existingSalt = JSON.parse(await readFile(OUT, "utf8")).salt || null;
+} catch {
+  /* first run, or the file is gone */
+}
+
+let payload;
+if (existingSalt) {
+  const key = await deriveKey(passcode, fromB64(existingSalt));
+  payload = { ...(await encryptWithKey(data, key, existingSalt)), kdf: "PBKDF2-SHA256", iter: 600_000 };
+} else {
+  payload = await encryptJSON(data, passcode);
+}
 await writeFile(OUT, JSON.stringify(payload, null, 2) + "\n", "utf8");
 
 const bytes = JSON.stringify(payload).length;
 console.log(`Encrypted ${from}`);
 console.log(`  families ${data.families.length}  blocks ${data.blocks.length}  tasks ${data.seedTasks.length}`);
 console.log(`  -> public/caseload.enc.json (${(bytes / 1024).toFixed(1)} kB, ${payload.iter.toLocaleString()} KDF iterations)`);
+console.log(
+  existingSalt
+    ? "  salt kept, so unlocked devices stay unlocked and the shared write token is unchanged"
+    : "  new salt: everyone re-enters the passcode, and SKYMO_WRITE_TOKEN must be updated"
+);

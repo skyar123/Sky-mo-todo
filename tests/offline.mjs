@@ -6,6 +6,9 @@
    request does not, so cache.match missed the bundle it had just stored and
    the page came back blank. Hence ignoreVary in sw.js. */
 
+/* The board polls the shared endpoint, so the network never goes quiet.
+   "networkidle" would be a coin toss here; every wait below is for the thing
+   the next step actually needs. */
 import { chromium } from "playwright";
 import { loadFixture } from "./fixture.mjs";
 import { LONG } from "../src/lib/dates.js";
@@ -19,7 +22,7 @@ const browser = await chromium.launch(
 const ctx = await browser.newContext({ viewport: { width: 390, height: 844 } });
 const page = await ctx.newPage();
 
-await page.goto(`${BASE}/?date=${fx.todayIso}`, { waitUntil: "networkidle" });
+await page.goto(`${BASE}/?date=${fx.todayIso}`, { waitUntil: "domcontentloaded" });
 await page.waitForSelector("#passcode:not([disabled])");
 await page.fill("#passcode", process.env.SKYMO_PASSCODE);
 await page.click('button[type="submit"]');

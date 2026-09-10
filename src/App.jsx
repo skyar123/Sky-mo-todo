@@ -9,6 +9,7 @@ import { PrintTab } from "./components/PrintTab.jsx";
 import { AddSheet } from "./components/AddSheet.jsx";
 import { BackupSheet } from "./components/BackupSheet.jsx";
 import { SearchResults, searchCaseload } from "./components/SearchResults.jsx";
+import { TeamingTab } from "./components/TeamingTab.jsx";
 import { useBoard } from "./lib/board.js";
 import { useSwipe } from "./lib/swipe.js";
 import { copyText } from "./lib/clipboard.js";
@@ -48,6 +49,7 @@ export default function App({ caseload, onLock, crypto }) {
   const [lane, setLane] = useState("all");
   const [openId, setOpenId] = useState(null);
   const [addOpen, setAddOpen] = useState(false);
+  const [teamingOpen, setTeamingOpen] = useState(false);
   const [backupOpen, setBackupOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [searching, setSearching] = useState(false);
@@ -108,6 +110,21 @@ export default function App({ caseload, onLock, crypto }) {
   }, [laneTasks, today]);
 
   const byId = useMemo(() => new Map(families.map((c) => [c.id, c])), [families]);
+
+  /* The standing meeting you turn up to with a list. Found by label rather
+     than by weekday, so moving it does not orphan the agenda. */
+  const teamingBlock = useMemo(
+    () => caseload.blocks.find((b) => /teaming/i.test(b.label)) || null,
+    [caseload.blocks]
+  );
+  const isTeamingBlock = useCallback(
+    (item) => item.kind === "block" && !!teamingBlock && item.label === teamingBlock.label,
+    [teamingBlock]
+  );
+  const agendaCount = useMemo(
+    () => board.openTasks.filter((t) => t.agenda).length,
+    [board.openTasks]
+  );
 
   /* What the other person did while this device was not looking. Reads all
      tasks, not just open ones: "Mo ticked that off" is the single most useful
@@ -184,14 +201,14 @@ export default function App({ caseload, onLock, crypto }) {
       if (el && el.matches("input, textarea, select")) return;
       if (e.key === "ArrowRight") stepTab(1);
       else if (e.key === "ArrowLeft") stepTab(-1);
-      else if (e.key === "Escape") { setOpenId(null); setSearching(false); }
+      else if (e.key === "Escape") { setOpenId(null); setSearching(false); setTeamingOpen(false); }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [stepTab]);
 
   const openFamily = openId ? byId.get(openId) : null;
-  const showPrint = tab === "print" && !openFamily && !searching;
+  const showPrint = tab === "print" && !openFamily && !searching && !teamingOpen;
 
   return (
     <div style={S.app} {...swipe}>
@@ -214,7 +231,7 @@ export default function App({ caseload, onLock, crypto }) {
               ))}
             </div>
             <button
-              onClick={() => { setSearching((s) => !s); setOpenId(null); }}
+              onClick={() => { setSearching((s) => !s); setOpenId(null); setTeamingOpen(false); }}
               style={{ ...S.iconBtn, ...(searching ? S.iconBtnOn : {}) }}
               aria-label={searching ? "Close search" : "Search"}
               aria-pressed={searching}
@@ -263,9 +280,9 @@ export default function App({ caseload, onLock, crypto }) {
             {TAB_LABELS.map(([k, l]) => (
               <button
                 key={k}
-                onClick={() => { setTab(k); setOpenId(null); }}
-                style={{ ...S.tab, ...(tab === k && !openFamily ? S.tabOn : {}) }}
-                aria-current={tab === k && !openFamily ? "page" : undefined}
+                onClick={() => { setTab(k); setOpenId(null); setTeamingOpen(false); }}
+                style={{ ...S.tab, ...(tab === k && !openFamily && !teamingOpen ? S.tabOn : {}) }}
+                aria-current={tab === k && !openFamily && !teamingOpen ? "page" : undefined}
               >
                 {l}
               </button>
@@ -310,7 +327,25 @@ export default function App({ caseload, onLock, crypto }) {
           <div style={S.empty}>Type at least two letters.</div>
         )}
 
-        {!searching && openFamily && (
+        {!searching && teamingOpen && (
+          <>
+            <div style={S.famNav}>
+              <button onClick={() => setTeamingOpen(false)} style={S.back}>‹ back</button>
+            </div>
+            <TeamingTab
+              block={teamingBlock}
+              families={families}
+              familyById={byId}
+              tasks={board.tasks}
+              today={today}
+              board={boardWithUndo}
+              onOpenFamily={(id) => { setTeamingOpen(false); goFamily(id); }}
+              onFlash={flash}
+            />
+          </>
+        )}
+
+        {!searching && !teamingOpen && openFamily && (
           <FamilyDetail
             c={openFamily}
             tasks={board.tasks}
@@ -326,7 +361,7 @@ export default function App({ caseload, onLock, crypto }) {
           />
         )}
 
-        {!searching && !openFamily && tab === "day" && (
+        {!searching && !teamingOpen && !openFamily && tab === "day" && (
           <DayTab
             caseload={caseload}
             today={today}
@@ -335,6 +370,9 @@ export default function App({ caseload, onLock, crypto }) {
             changedFamilies={changedFamilies}
             theirChanges={theirChanges}
             theirName={nameOf(who === "sky" ? "mo" : "sky")}
+            agendaCount={agendaCount}
+            isTeamingBlock={isTeamingBlock}
+            onOpenTeaming={() => { setTeamingOpen(true); setOpenId(null); }}
             onCatchUp={catchUp}
             soon={soon}
             openCount={laneTasks.length}
@@ -347,7 +385,7 @@ export default function App({ caseload, onLock, crypto }) {
           />
         )}
 
-        {!searching && !openFamily && tab === "families" && (
+        {!searching && !teamingOpen && !openFamily && tab === "families" && (
           <FamiliesTab
             families={families}
             counts={counts}
@@ -357,7 +395,7 @@ export default function App({ caseload, onLock, crypto }) {
           />
         )}
 
-        {!searching && !openFamily && tab === "texts" && (
+        {!searching && !teamingOpen && !openFamily && tab === "texts" && (
           <TextsTab
             families={families}
             today={today}
@@ -377,6 +415,7 @@ export default function App({ caseload, onLock, crypto }) {
             today={today}
             weekStart={weekStartOf(today)}
             me={who}
+            teamingLabel={teamingBlock ? `To bring up: ${teamingBlock.label.split(",")[0]}` : null}
             flash={flash}
           />
         )}

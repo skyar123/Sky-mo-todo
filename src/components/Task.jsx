@@ -134,6 +134,13 @@ export function Task({ x, color, today, families, familyById, board, who, onFlas
           </div>
 
           <div style={S.rowWrap}>
+            <button
+              onClick={() => set({ agenda: !x.agenda })}
+              style={{ ...S.mini, ...(x.agenda ? S.miniOn : {}) }}
+              aria-pressed={!!x.agenda}
+            >
+              {x.agenda ? "On the teaming list" : "Bring to teaming"}
+            </button>
             <button onClick={remind} style={S.mini}>Remind me</button>
             <button onClick={() => setOpen(false)} style={S.mini}>Done editing</button>
             {!x.seed && (
