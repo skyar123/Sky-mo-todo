@@ -5,6 +5,7 @@ import { pillStyle } from "./Task.jsx";
 import { LONG, fmtDay, dueInfo, spokenDate } from "../lib/dates.js";
 import { agendaFor, nextVisitDay } from "../lib/schedule.js";
 import { buildICS, downloadICS, icsFilename } from "../lib/ics.js";
+import { handoffMessage } from "../lib/handoff.js";
 
 /* A standing meeting is just a line on the day, except teaming, which is the
    one you arrive at with a list. That one opens. */
@@ -45,8 +46,7 @@ export function DayTab({ caseload, today, counts, supplies, soon, openCount, uns
       onFlash?.("Nothing with a due date this week");
       return;
     }
-    downloadICS(ics, icsFilename("due-this-week", today));
-    onFlash?.("Opening in your calendar");
+    onFlash?.(handoffMessage(downloadICS(ics, icsFilename("due-this-week", today))));
   }
   const aheadAgenda = ahead ? agendaFor(families, blocks, ahead) : [];
 

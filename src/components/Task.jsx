@@ -4,6 +4,7 @@ import { KIND, ORDER } from "../data/library.js";
 import { assignLabels } from "../lib/identity.js";
 import { dueInfo } from "../lib/dates.js";
 import { buildICS, downloadICS, icsFilename } from "../lib/ics.js";
+import { handoffMessage } from "../lib/handoff.js";
 
 export function pillStyle(d) {
   if (!d) return null;
@@ -31,8 +32,7 @@ export function Task({ x, color, today, families, familyById, board, who, onFlas
       onFlash?.("Could not build that reminder");
       return;
     }
-    downloadICS(ics, icsFilename(x.text.slice(0, 24), today));
-    onFlash?.("Opening in your calendar");
+    onFlash?.(handoffMessage(downloadICS(ics, icsFilename(x.text.slice(0, 24), today))));
   }
 
   return (

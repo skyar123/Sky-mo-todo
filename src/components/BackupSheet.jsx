@@ -2,6 +2,7 @@ import React, { useRef, useState } from "react";
 import { S, LINE } from "../styles.js";
 import { iso } from "../lib/dates.js";
 import { PEOPLE } from "../lib/identity.js";
+import { handOff } from "../lib/handoff.js";
 
 /* Everything the board remembers lives in one browser. Clearing site data,
    a new phone or a reinstall takes it with it, so a backup is not optional
@@ -12,16 +13,13 @@ export function BackupSheet({ close, exportBlob, importBlob, onLock, who, setWho
 
   function download() {
     try {
-      const blob = new Blob([JSON.stringify(exportBlob(), null, 2)], { type: "application/json" });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `skymo-backup-${iso(today)}.json`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      setTimeout(() => URL.revokeObjectURL(url), 1000);
-      flash("Backup saved");
+      const how = handOff(
+        JSON.stringify(exportBlob(), null, 2),
+        `skymo-backup-${iso(today)}.json`,
+        "application/json",
+        { title: "sky + mo backup" }
+      );
+      flash(how === "shared" ? "Choose where to keep it" : "Backup saved");
     } catch {
       flash("Could not save the file");
     }

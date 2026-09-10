@@ -24,11 +24,12 @@ const TAB_LABELS = [["day", "Day"], ["families", "Families"], ["texts", "Texts"]
 /* How the sharing state reads in the header. Deliberately quiet: this only
    needs attention when it is failing. */
 const SYNC = {
-  idle:    { mark: "✓", color: "#5FBF77", label: "Shared and up to date" },
-  syncing: { mark: "↻", color: "#B9AECE", label: "Syncing" },
-  offline: { mark: "○", color: "#B9AECE", label: "Offline, will sync when you are back" },
-  error:   { mark: "!", color: HOT,       label: "Could not sync, tap to try again" },
-  off:     { mark: "·", color: "#B9AECE", label: "Not shared" },
+  idle:     { mark: "✓", color: "#5FBF77", label: "Shared and up to date" },
+  syncing:  { mark: "↻", color: "#B9AECE", label: "Syncing" },
+  retrying: { mark: "↻", color: "#B9AECE", label: "Trying again in a moment" },
+  offline:  { mark: "○", color: "#B9AECE", label: "Offline. Your work is saved on this phone and will sync when you are back" },
+  error:    { mark: "!", color: HOT,       label: "Cannot reach the shared board. Your work is saved on this phone. Tap to try again" },
+  off:      { mark: "·", color: "#B9AECE", label: "Not shared" },
 };
 
 /** Monday of the week `d` falls in, for the printed header. */
@@ -240,7 +241,12 @@ export default function App({ caseload, onLock, crypto }) {
             </button>
             {board.shared && (
               <button
-                onClick={board.syncNow}
+                onClick={() => {
+                  /* Whatever it says, the first thing worth knowing is that
+                     nothing has been lost. */
+                  flash(SYNC[board.syncState]?.label || "Syncing");
+                  board.syncNow();
+                }}
                 style={{ ...S.iconBtn, borderColor: SYNC[board.syncState]?.color || LINE }}
                 aria-label={`Sharing: ${SYNC[board.syncState]?.label || "off"}. Tap to sync now.`}
                 title={SYNC[board.syncState]?.label}

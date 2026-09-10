@@ -73,6 +73,8 @@ export function useBoard(caseload, today, crypto, me) {
   const tokenRef = useRef(null);
   const busyRef = useRef(false);
   const dirtyRef = useRef(false);
+  const failuresRef = useRef(0);
+  const retryRef = useRef(null);
 
   /* Load once, after the caseload is unlocked. */
   useEffect(() => {
@@ -229,14 +231,35 @@ export function useBoard(caseload, today, crypto, me) {
       setStamps(next.stamps);
       setSyncState("idle");
       setLastSync(Date.now());
+      failuresRef.current = 0;
     } catch {
-      /* A failed sync must never cost local work. The board keeps what it has
-         and tries again. */
-      setSyncState(typeof navigator !== "undefined" && navigator.onLine === false ? "offline" : "error");
+      /* A failed sync never costs local work: everything is already in local
+         storage and the next success merges it up. So one blip is not worth
+         alarming about. Retry soon, with backoff, and only call it an error
+         once it has actually kept failing. */
+      failuresRef.current += 1;
+      const offline = typeof navigator !== "undefined" && navigator.onLine === false;
+      setSyncState(offline ? "offline" : failuresRef.current >= 3 ? "error" : "retrying");
+
+      if (!offline) {
+        clearTimeout(retryRef.current);
+        const wait = Math.min(3000 * 2 ** (failuresRef.current - 1), 30000);
+        retryRef.current = setTimeout(() => {
+          busyRef.current = false;
+          runSyncRef.current?.();
+        }, wait);
+      }
     } finally {
       busyRef.current = false;
     }
   }, [crypto, originals, seedTasks]);
+
+  /* The retry above reaches the current runSync without making runSync depend
+     on itself. */
+  const runSyncRef = useRef(null);
+  runSyncRef.current = runSync;
+
+  useEffect(() => () => clearTimeout(retryRef.current), []);
 
   /* First sync once the local board has loaded, then whenever the phone comes
      back to the screen, and on a slow timer in case it never leaves. */
@@ -321,6 +344,13 @@ export function useBoard(caseload, today, crypto, me) {
     ready, tasks, openTasks, sent, supplies, drops,
     setSent: markedSetSent, setDrops: markedSetDrops, toggle, setLaneOf, remove, add, addQuick, update, toggleSupply,
     exportBlob, importBlob,
-    shared: !!crypto?.key, syncState, lastSync, syncNow: runSync,
+    shared: !!crypto?.key,
+    syncState,
+    lastSync,
+    syncNow: useCallback(() => {
+      failuresRef.current = 0;
+      clearTimeout(retryRef.current);
+      runSync();
+    }, [runSync]),
   };
 }

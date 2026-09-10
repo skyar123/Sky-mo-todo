@@ -4,6 +4,7 @@ import { TONES, SHARES, SHARE_TAGS, NOTES, RULES, COMING } from "../data/library
 import { iso, spokenDate, LONG } from "../lib/dates.js";
 import { visitsOn, upcomingVisitDays } from "../lib/schedule.js";
 import { buildReminderICS, downloadICS, icsFilename } from "../lib/ics.js";
+import { handoffMessage } from "../lib/handoff.js";
 
 const FIRST_TONE = TONES.find((t) => t.id === "first");
 
@@ -97,8 +98,7 @@ export function TextsTab({ families, today, sent, setSent, copy, initialDay, onF
               onClick={() => {
                 const ics = buildReminderICS(families, today);
                 if (!ics) { onFlash?.("Nothing scheduled to remind about"); return; }
-                downloadICS(ics, icsFilename("send-reminders", today));
-                onFlash?.("Opening in your calendar");
+                onFlash?.(handoffMessage(downloadICS(ics, icsFilename("send-reminders", today))));
               }}
               style={S.mini}
             >
