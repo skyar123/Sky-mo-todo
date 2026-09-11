@@ -10,6 +10,19 @@ import { handOff } from "../lib/handoff.js";
 export function BackupSheet({ close, exportBlob, importBlob, onLock, who, setWho, shared, calendar, today, flash, storageOk }) {
   const file = useRef(null);
   const [confirmImport, setConfirmImport] = useState(null);
+  const [showProject, setShowProject] = useState(false);
+  const [draftId, setDraftId] = useState("");
+
+  function saveProject() {
+    try {
+      calendar.useProject(draftId);
+      setDraftId("");
+      setShowProject(false);
+      flash(draftId.trim() ? "Using that Google project" : "Back to the built-in project");
+    } catch (err) {
+      flash(err.message || "That did not look like a client id");
+    }
+  }
 
   function download() {
     try {
@@ -121,12 +134,62 @@ export function BackupSheet({ close, exportBlob, importBlob, onLock, who, setWho
                   Connect it and the day view shows what is actually on your calendar,
                   instead of the times typed into the board.
                 </div>
-                <button onClick={calendar.connect} style={S.bigBtn}>
-                  {calendar.status === "working" ? "Connecting…" : "Connect Google Calendar"}
-                </button>
+                {calendar.haveId ? (
+                  <button onClick={calendar.connect} style={S.bigBtn}>
+                    {calendar.status === "working" ? "Connecting…" : "Connect Google Calendar"}
+                  </button>
+                ) : (
+                  <div style={{ ...S.rules, marginTop: 0 }}>
+                    <div style={S.rule}>
+                      This needs a client id from a Google Cloud project of your own.
+                      Paste it below and the connect button appears.
+                    </div>
+                  </div>
+                )}
               </>
             )}
             {calendar.error && <div style={{ ...S.tip, color: "#C62A40" }}>{calendar.error}</div>}
+
+            {showProject || !calendar.haveId || (calendar.error && !calendar.connected) ? (
+              <div style={{ marginTop: 10 }}>
+                <div style={S.fieldLabel}>Google client id</div>
+                <input
+                  value={draftId}
+                  onChange={(e) => setDraftId(e.target.value)}
+                  placeholder={calendar.clientId || "000000000000-xxxx.apps.googleusercontent.com"}
+                  aria-label="Google client id"
+                  autoCapitalize="off"
+                  autoCorrect="off"
+                  spellCheck={false}
+                  style={{ ...S.editInput, fontSize: 12.5 }}
+                />
+                <div style={S.rowWrap}>
+                  <button onClick={saveProject} style={S.mini}>Use this one</button>
+                  {calendar.ownProject && (
+                    <button
+                      onClick={() => { calendar.useProject(""); setDraftId(""); flash("Back to the built-in project"); }}
+                      style={S.mini}
+                    >
+                      Back to default
+                    </button>
+                  )}
+                  {calendar.haveId && (
+                    <button onClick={() => { setShowProject(false); setDraftId(""); }} style={S.mini}>Cancel</button>
+                  )}
+                </div>
+                <div style={S.tip}>
+                  From Google Cloud Console, APIs &amp; Services, Credentials: a Web
+                  application OAuth client, with this site listed under Authorised
+                  JavaScript origins and its consent screen set to External. The id is
+                  public, not a password, and it is only saved on this device.
+                </div>
+              </div>
+            ) : (
+              <button onClick={() => setShowProject(true)} style={S.textBtn}>
+                {calendar.ownProject ? "Change the Google project" : "Use a different Google project"}
+              </button>
+            )}
+
             <div style={S.tip}>
               Read only, and this device only. The calendars holding clients' legal names
               are never listed or read. Nothing from your calendar is sent to the server

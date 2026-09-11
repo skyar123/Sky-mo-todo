@@ -30,7 +30,7 @@ function BlockRow({ item, teaming, agendaCount, onOpenTeaming }) {
     );
   }
   return (
-    <button onClick={onOpenTeaming} style={{ ...S.visit, opacity: 1 }}>
+    <button onClick={onOpenTeaming} style={{ ...S.visit, opacity: 1 }} aria-label="Open the teaming agenda">
       <span style={S.visitTime}>{item.time}</span>
       <span style={{ ...S.dot, background: "#5C6BD8" }} aria-hidden="true" />
       <span style={{ flex: 1 }}>
@@ -44,7 +44,7 @@ function BlockRow({ item, teaming, agendaCount, onOpenTeaming }) {
   );
 }
 
-export function DayTab({ caseload, today, counts, supplies, soon, openCount, unsent, reminderDay, familyById, changedFamilies, theirChanges, theirName, agendaCount, isTeamingBlock, live, liveAsOf, onCatchUp, onOpenTeaming, onFlash, onOpenFamily, onGoTexts }) {
+export function DayTab({ caseload, today, counts, supplies, soon, openCount, unsent, reminderDay, familyById, changedFamilies, theirChanges, theirName, agendaCount, isTeamingBlock, teamingBlock, live, liveAsOf, onCatchUp, onOpenTeaming, onFlash, onOpenFamily, onGoTexts }) {
   const { families, blocks } = caseload;
   const standing = agendaFor(families, blocks, today);
 
@@ -68,6 +68,11 @@ export function DayTab({ caseload, today, counts, supplies, soon, openCount, uns
     onFlash?.(handoffMessage(downloadICS(ics, icsFilename("due-this-week", today))));
   }
   const aheadAgenda = ahead ? agendaFor(families, blocks, ahead) : [];
+
+  /* Things worth raising at teaming occur to you on a Monday, not at nine on
+     Thursday morning. The block itself is only on the day it falls, so when it
+     is not on screen the agenda still needs a door. */
+  const teamingShown = [...agenda, ...aheadAgenda].some((i) => isTeamingBlock(i));
 
   return (
     <>
@@ -154,6 +159,17 @@ export function DayTab({ caseload, today, counts, supplies, soon, openCount, uns
             </>
           )}
         </>
+      )}
+
+      {teamingBlock && !teamingShown && (
+        <button onClick={onOpenTeaming} style={S.nudge} aria-label="Open the teaming agenda">
+          <div style={S.nudgeTitle}>To bring up {LONG[teamingBlock.day]}</div>
+          <div style={S.nudgeSub}>
+            {agendaCount > 0
+              ? `${agendaCount} on the list for ${teamingBlock.label.split(",")[0].toLowerCase()}`
+              : "Nothing on the list yet. Add it while you are thinking of it."}
+          </div>
+        </button>
       )}
 
       {unsent.length > 0 && reminderDay && (

@@ -16,6 +16,7 @@ const day = LONG[fx.today.getDay()];
 
 const ok = (m) => console.log("  ok   " + m);
 const bad = (m) => { console.log("  FAIL " + m); process.exitCode = 1; };
+const check = (cond, good, why) => (cond ? ok(good) : bad(why || good));
 
 /* Two of these must never be offered or fetched. */
 const CALENDARS = [
@@ -91,6 +92,19 @@ await page.click('button[type="submit"]');
 await page.waitForSelector(`text=${day}`, { timeout: 30000 });
 
 await page.click('button[aria-label="Backup and lock"]');
+
+/* No client id ships in the bundle, so the first thing the screen asks for is
+   the one naming your own Google project. Connecting is not offered until it
+   has one, which is the whole point: a wrong id fails inside a Google popup
+   where nothing can explain it. */
+await page.waitForSelector('input[aria-label="Google client id"]', { timeout: 8000 });
+check(
+  (await page.locator('button:has-text("Connect Google Calendar")').count()) === 0,
+  "connecting is not offered until there is a client id"
+);
+await page.fill('input[aria-label="Google client id"]', "000000000000-teststub.apps.googleusercontent.com");
+await page.click('button:text-is("Use this one")');
+
 await page.waitForSelector('button:has-text("Connect Google Calendar")', { timeout: 8000 });
 await page.click('button:has-text("Connect Google Calendar")');
 await page.waitForSelector('button:has-text("Disconnect")', { timeout: 15000 });

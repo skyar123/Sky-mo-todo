@@ -72,6 +72,11 @@ npm run dev
 Append `?date=2026-09-08` to pin the board to a particular day, which is handy
 for a walkthrough or a screenshot.
 
+`npm test` needs `SKYMO_PASSCODE` for the same reason the app does: the suite
+decrypts the caseload at runtime so no client content sits in a test file. It
+derives the shared-board write token from that same key, so nothing else needs
+setting. If the bundled Chromium is missing, point `CHROMIUM` at one.
+
 ## Backups matter here
 
 Ticks, lanes, supplies, drops and anything typed in live in one browser's local
@@ -93,7 +98,7 @@ public/          encrypted payload, icons, manifest, service worker
 scripts/         encrypt, decrypt, icon generation, sw stamping, leak check
 src/lib/         dates, schedule, crypto, storage, clipboard, parsing, board state
 src/components/  the screens
-src/data/        message templates and the share library (no client content)
+src/data/        message templates, the share library, build settings (no client content)
 tests/           browser suites, online and offline
 ```
 

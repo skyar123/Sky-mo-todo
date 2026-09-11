@@ -387,6 +387,7 @@ export default function App({ caseload, onLock, crypto }) {
             theirName={nameOf(who === "sky" ? "mo" : "sky")}
             agendaCount={agendaCount}
             isTeamingBlock={isTeamingBlock}
+            teamingBlock={teamingBlock}
             live={liveToday}
             liveAsOf={calendar.fetchedAt}
             onOpenTeaming={() => { setTeamingOpen(true); setOpenId(null); }}

@@ -169,10 +169,11 @@ check((await page.textContent("main")).includes(phrase), "a pasted note routes t
 /* --- the teaming agenda --- */
 await page.click('button:has-text("Day")');
 await page.waitForSelector(`text=${LONG[fx.today.getDay()]}`);
-/* The teaming block may sit on a later day, so reach it from Families-free
-   navigation: the day view shows the next visit day's agenda when today has
-   none, and the block itself is the way in. */
-const teamingBtn = page.locator('button:has-text("Teaming")').first();
+/* The block sits on one day of the week, so on every other day the way in is
+   the standing "to bring up" row. Both carry the same label; matching on the
+   word alone matched a task that merely mentioned teaming. */
+const teamingBtn = page.locator('button[aria-label="Open the teaming agenda"]').first();
+check(await teamingBtn.count() > 0, "the teaming agenda is reachable on any day");
 if (await teamingBtn.count()) {
   await teamingBtn.click();
   await page.waitForSelector('input[aria-label="Add something to bring up at teaming"]', { timeout: 8000 });

@@ -2,7 +2,10 @@
 /* Builds, serves the built output, runs the browser suites, then tears down. */
 
 import { spawn } from "node:child_process";
+import { readFile } from "node:fs/promises";
 import { setTimeout as sleep } from "node:timers/promises";
+import { decryptJSON } from "../src/lib/crypto.js";
+import { writeToken } from "../src/lib/sync.js";
 
 const PORT = process.env.PORT || 4173;
 const API_PORT = process.env.API_PORT || 4174;
@@ -10,8 +13,21 @@ const BASE = `http://localhost:${PORT}`;
 
 /* The shared board lives behind a Netlify Function, which vite does not serve.
    The stub speaks the same contract so the sharing behaviour can be driven
-   here instead of only in production. */
-const TOKEN = process.env.SKYMO_WRITE_TOKEN || "test-token";
+   here instead of only in production.
+
+   The token is derived rather than invented: the browser computes it from the
+   key the passcode unlocks, so a made-up one makes every write 403 and the
+   suite fails as a wall of console errors that say nothing about the cause. */
+async function deriveToken() {
+  if (process.env.SKYMO_WRITE_TOKEN) return process.env.SKYMO_WRITE_TOKEN;
+  const passcode = process.env.SKYMO_PASSCODE;
+  if (!passcode) throw new Error("SKYMO_PASSCODE is not set; the suite cannot decrypt the caseload.");
+  const enc = JSON.parse(await readFile(new URL("../public/caseload.enc.json", import.meta.url), "utf8"));
+  const { key } = await decryptJSON(enc, passcode);
+  return writeToken(key);
+}
+
+const TOKEN = await deriveToken();
 const childEnv = {
   ...process.env,
   SKYMO_WRITE_TOKEN: TOKEN,

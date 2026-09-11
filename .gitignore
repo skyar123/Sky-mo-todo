@@ -9,8 +9,11 @@ dist
 # Plaintext caseload. Contains client information and must never be committed.
 # Only public/caseload.enc.json, the encrypted form, belongs in this repo.
 # The whole directory is ignored rather than named files: a .bak or a rename
-# is exactly how the plaintext would otherwise slip through.
-data/
+# is exactly how the plaintext would otherwise slip through. Anchored with a
+# leading slash so it means this directory and not every directory called data:
+# unanchored, it also swallowed src/data and left the app unbuildable from a
+# fresh clone.
+/data/
 
 # Test screenshots
 tests/shots
