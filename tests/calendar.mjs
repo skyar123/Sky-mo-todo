@@ -18,6 +18,10 @@ const ok = (m) => console.log("  ok   " + m);
 const bad = (m) => { console.log("  FAIL " + m); process.exitCode = 1; };
 const check = (cond, good, why) => (cond ? ok(good) : bad(why || good));
 
+/* Deliberately not the shipped id: proving the override is what reaches Google
+   is the whole point of having one. */
+const PASTED = "000000000000-teststub.apps.googleusercontent.com";
+
 /* Two of these must never be offered or fetched. */
 const CALENDARS = [
   { id: "cf@group.calendar.google.com", summary: "Child First-Skylar" },
@@ -41,10 +45,29 @@ if (!subject) throw new Error("no family with an alias and a standing time to te
 const title = `${subject.alias[0]}:`;
 const LIVE_TIME = "3:45";
 
+/* A visit on the day the reminders go out, moved off its standing time. This
+   is the case the whole integration exists for: the message must name the time
+   on the calendar, not the one typed into the board months ago. */
+const texter = fx.reminderVisits.find((f) => f.texts && f.alias?.length && f.time);
+if (!texter) throw new Error("no textable family with an alias on the reminder day to test against");
+const MOVED_TIME = "4:15";
+const onReminderDay = (h, m = 0) => {
+  const d = new Date(fx.reminderDay);
+  d.setHours(h, m, 0, 0);
+  return d.toISOString();
+};
+
 const EVENTS = [
   { id: "e1", status: "confirmed", summary: title, start: { dateTime: at(15, 45) }, end: { dateTime: at(16, 45) } },
   { id: "e2", status: "confirmed", summary: "UNMATCHEDPROBE appointment", start: { dateTime: at(10) }, end: { dateTime: at(11) } },
   { id: "e3", status: "cancelled", summary: "CANCELLEDPROBE", start: { dateTime: at(9) }, end: { dateTime: at(10) } },
+  {
+    id: "e4",
+    status: "confirmed",
+    summary: `${texter.alias[0]}:`,
+    start: { dateTime: onReminderDay(16, 15) },
+    end: { dateTime: onReminderDay(17, 15) },
+  },
 ];
 
 const browser = await chromium.launch(
@@ -60,7 +83,7 @@ await ctx.addInitScript(() => {
       oauth2: {
         initTokenClient: (cfg) => ({
           requestAccessToken: () => {
-            window.__googleCalls.push({ scope: cfg.scope });
+            window.__googleCalls.push({ scope: cfg.scope, clientId: cfg.client_id });
             cfg.callback({ access_token: "stub-token", expires_in: 3600 });
           },
         }),
@@ -93,16 +116,23 @@ await page.waitForSelector(`text=${day}`, { timeout: 30000 });
 
 await page.click('button[aria-label="Backup and lock"]');
 
-/* No client id ships in the bundle, so the first thing the screen asks for is
-   the one naming your own Google project. Connecting is not offered until it
-   has one, which is the whole point: a wrong id fails inside a Google popup
-   where nothing can explain it. */
+/* The sky+mo project's id ships, so connecting is one tap. The override is
+   still there because one wrong id already cost a deploy to find out: check
+   both, the shipped one and a pasted one taking its place. */
+await page.waitForSelector('button:has-text("Connect Google Calendar")', { timeout: 8000 });
+ok("the shipped client id means connecting is one tap");
+
+await page.click('button:has-text("Use a different Google project")');
 await page.waitForSelector('input[aria-label="Google client id"]', { timeout: 8000 });
+await page.fill('input[aria-label="Google client id"]', "not-a-client-id");
+await page.click('button:text-is("Use this one")');
+await page.waitForTimeout(400);
 check(
-  (await page.locator('button:has-text("Connect Google Calendar")').count()) === 0,
-  "connecting is not offered until there is a client id"
+  /does not look like a client id/i.test(await page.textContent("body")),
+  "a half-copied client id is refused before Google sees it"
 );
-await page.fill('input[aria-label="Google client id"]', "000000000000-teststub.apps.googleusercontent.com");
+
+await page.fill('input[aria-label="Google client id"]', PASTED);
 await page.click('button:text-is("Use this one")');
 
 await page.waitForSelector('button:has-text("Connect Google Calendar")', { timeout: 8000 });
@@ -110,10 +140,11 @@ await page.click('button:has-text("Connect Google Calendar")');
 await page.waitForSelector('button:has-text("Disconnect")', { timeout: 15000 });
 ok("connects and stays connected");
 
-const scope = await page.evaluate(() => window.__googleCalls[0]?.scope);
-scope === "https://www.googleapis.com/auth/calendar.readonly"
+const asked = await page.evaluate(() => window.__googleCalls[0]);
+asked?.scope === "https://www.googleapis.com/auth/calendar.readonly"
   ? ok("asks for read-only access only")
-  : bad(`wrong scope: ${scope}`);
+  : bad(`wrong scope: ${asked?.scope}`);
+check(asked?.clientId === PASTED, "the pasted client id is the one Google is asked with");
 
 const sheet = await page.textContent('div[role], body');
 /Child First-Skylar/.test(sheet)
@@ -153,7 +184,31 @@ main.includes(LIVE_TIME) && LIVE_TIME !== subject.time
   ? bad("a cancelled event was shown")
   : ok("cancelled events are left out");
 
+/* The reminder texts. These are what actually reach a family, so a time that
+   moved on the calendar and not on the board has to reach them too. */
+await page.click('button:has-text("Texts")');
+await page.waitForTimeout(1200);
+const texts = await page.textContent("main");
+check(
+  texts.includes(`at ${MOVED_TIME}`),
+  `the reminder names the calendar's time (${MOVED_TIME}), not the board's (${texter.time})`
+);
+check(
+  !new RegExp(`at ${texter.time.replace(".", "\\.")}\\b`).test(texts),
+  "the board's old time is not in the message"
+);
+check(
+  texts.includes(`was ${texter.time}`),
+  "and it says which time moved, so the board can be corrected"
+);
+check(
+  /not on your calendar/.test(texts),
+  "a standing visit the calendar does not have is flagged, not quietly sent"
+);
+
 /* And it has to survive losing the network, since that is the point of the cache. */
+await page.click('button:has-text("Day")');
+await page.waitForSelector(`text=${day}`);
 await ctx.setOffline(true);
 await page.reload({ waitUntil: "domcontentloaded" });
 await page.waitForSelector(`text=${day}`, { timeout: 30000 });

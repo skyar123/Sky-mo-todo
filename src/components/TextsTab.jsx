@@ -2,7 +2,7 @@ import React, { useMemo, useState } from "react";
 import { S } from "../styles.js";
 import { TONES, SHARES, SHARE_TAGS, NOTES, RULES, COMING } from "../data/library.js";
 import { iso, spokenDate, LONG } from "../lib/dates.js";
-import { visitsOn, upcomingVisitDays } from "../lib/schedule.js";
+import { visitsToText, upcomingTextDays } from "../lib/schedule.js";
 import { buildReminderICS, downloadICS, icsFilename } from "../lib/ics.js";
 import { handoffMessage } from "../lib/handoff.js";
 
@@ -11,7 +11,7 @@ const FIRST_TONE = TONES.find((t) => t.id === "first");
 const renderShare = (share, size) =>
   share.links.reduce((out, l, i) => out.split(`[link${i + 1}]`).join(l.url), share[size]);
 
-export function TextsTab({ families, today, sent, setSent, copy, initialDay, onFlash }) {
+export function TextsTab({ families, today, sent, setSent, copy, initialDay, events, detectFamily, onFlash }) {
   const [mode, setMode] = useState("reminders");
   const [tone, setTone] = useState("warm");
   const [coming, setComing] = useState("both"); // both of you is the usual case
@@ -19,13 +19,25 @@ export function TextsTab({ families, today, sent, setSent, copy, initialDay, onF
   const [shareTag, setShareTag] = useState("dyad"); // the work is dyadic; start there
   const [len, setLen] = useState("short");
 
-  const days = useMemo(() => upcomingVisitDays(families, today, 4), [families, today]);
+  const days = useMemo(
+    () => upcomingTextDays(families, today, events, detectFamily, 4),
+    [families, today, events, detectFamily]
+  );
   const [dayKey, setDayKey] = useState(() => iso(initialDay || days[0] || today));
   const target = days.find((d) => iso(d) === dayKey) || days[0] || null;
 
   const T = TONES.find((x) => x.id === tone) || TONES[0];
   const share = SHARES.find((s) => s.id === shareId);
-  const visits = target ? visitsOn(families, target).filter((c) => c.texts) : [];
+  const visits = useMemo(
+    () => (target ? visitsToText(families, target, events, detectFamily) : []),
+    [families, target, events, detectFamily]
+  );
+
+  /* The whole point of reading the calendar is that a reminder never names a
+     time that moved. When one has, say which is which rather than swapping it
+     silently: the board may be the thing that needs correcting. */
+  const moved = visits.filter((v) => v.was);
+  const missing = visits.filter((v) => v.missing);
 
   return (
     <>
@@ -65,6 +77,23 @@ export function TextsTab({ families, today, sent, setSent, copy, initialDay, onF
               ? `Send the night before, for ${spokenDate(target)}.`
               : "No visits scheduled in the next two weeks."}
           </div>
+
+          {(moved.length > 0 || missing.length > 0) && (
+            <div style={{ ...S.rules, background: "#FFF6E8", borderColor: "#E9C98F" }}>
+              {moved.map((v) => (
+                <div key={v.c.id} style={S.rule}>
+                  {v.c.name} is at {v.time} on your calendar. The board still says {v.was},
+                  and these messages use the calendar.
+                </div>
+              ))}
+              {missing.map((v) => (
+                <div key={v.c.id} style={S.rule}>
+                  {v.c.name} has a standing {v.time} slot but is not on your calendar that
+                  day. Check before you send.
+                </div>
+              ))}
+            </div>
+          )}
 
           <div style={S.rowWrap}>
             {TONES.map((x) => (
@@ -114,16 +143,23 @@ export function TextsTab({ families, today, sent, setSent, copy, initialDay, onF
             <div style={S.empty}>Nobody on that day has texting turned on.</div>
           )}
 
-          {visits.map((c) => {
+          {visits.map(({ c, time, live, was, missing: notOnCal }) => {
             const key = c.id + iso(target);
-            const body = (c.first ? FIRST_TONE : T).build(c, spokenDate(target), coming);
+            /* The time in the message is the one on this row, not the one typed
+               into the board, so the two can never drift apart on screen. */
+            const body = (c.first ? FIRST_TONE : T).build({ ...c, time }, spokenDate(target), coming);
             const done = !!sent[key];
             return (
               <div key={c.id} style={{ ...S.msg, opacity: done ? 0.55 : 1 }}>
                 <div style={S.msgHead}>
                   <span style={{ ...S.dot, background: c.color }} aria-hidden="true" />
                   <span style={{ fontWeight: 700 }}>{c.name}</span>
-                  <span style={{ opacity: 0.6, fontSize: 12.5 }}>{c.time}</span>
+                  <span style={{ opacity: 0.6, fontSize: 12.5 }}>
+                    {time}
+                    {live ? " · from your calendar" : ""}
+                    {was ? `, was ${was}` : ""}
+                    {notOnCal ? " · not on your calendar" : ""}
+                  </span>
                 </div>
                 <div style={S.bubble}>{body}</div>
                 <div style={S.rowWrap}>

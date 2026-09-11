@@ -12,11 +12,13 @@ import { readJSON, writeJSON, remove } from "../lib/storage.js";
 
 const KEY = "google-client-id";
 
-/* No id is baked in. The one tried first named a project belonging to someone
-   else's Workspace, so Google refused every sign-in with org_internal and the
-   button simply failed. An id that cannot work is worse than none: with none,
-   the settings screen says what is missing and takes it. */
-const BUILT_IN = import.meta.env.VITE_GOOGLE_CLIENT_ID || "";
+/* The sky+mo Google Cloud project. An earlier id here named a project inside
+   somebody else's Workspace and Google refused every sign-in with
+   org_internal, which is why the settings screen can override this one: a
+   wrong id should cost a retype, not a rebuild. */
+const BUILT_IN =
+  import.meta.env.VITE_GOOGLE_CLIENT_ID ||
+  "891188470243-lrh1p84q19bunj48gd5tgng2uk112ch7.apps.googleusercontent.com";
 
 /* Google's own shape: digits, a dash, a token, then the suffix. Checked so a
    half-copied string is refused here rather than failing inside a popup. */

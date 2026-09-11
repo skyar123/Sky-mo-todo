@@ -80,3 +80,54 @@ export function liveAgendaFor(events, date, families, detectFamily) {
       return at - bt;
     });
 }
+
+/* --------------------------------------------------------------------------
+   The reminder texts, against the calendar.
+
+   A reminder that names the wrong time is worse than no reminder: the family
+   waits, or misses the door. The standing time is what someone typed into the
+   board weeks ago; the calendar is what was agreed. So when the calendar has
+   been read, its times are the ones that go into the message, and where the
+   two disagree the board says so rather than quietly picking one. */
+
+/** The day's visits with the time to actually put in a message. */
+export function visitsToText(families, date, events, detectFamily) {
+  const standing = visitsOn(families, date).filter((c) => c.texts);
+  const live = liveAgendaFor(events, date, families, detectFamily);
+
+  /* No calendar, or a calendar with nothing that day: the board is all there
+     is. An empty day is silence, not an assertion that nobody is booked. */
+  if (!live || !live.length) {
+    return standing.map((c) => ({ c, time: c.time, live: false, missing: false, was: null }));
+  }
+
+  const seen = new Set();
+  const out = [];
+  for (const item of live) {
+    if (item.kind !== "visit" || !item.c.texts) continue;
+    seen.add(item.c.id);
+    const was = item.time && item.c.time && timeKey(item.time) !== timeKey(item.c.time) ? item.c.time : null;
+    out.push({ c: item.c, time: item.time || item.c.time, live: true, missing: false, was });
+  }
+
+  /* Someone with a standing slot who is not on the calendar that day. Either
+     the visit moved and the board has not caught up, or it was never put on
+     the calendar. Dropping them risks a family hearing nothing; keeping them
+     silently risks a text about a visit that is not happening. So they stay
+     and they are marked, and the choice is the person's to make. */
+  for (const c of standing) {
+    if (!seen.has(c.id)) out.push({ c, time: c.time, live: false, missing: true, was: null });
+  }
+
+  return out.sort((a, b) => timeKey(a.time) - timeKey(b.time));
+}
+
+/** Days worth offering in the reminder picker, the calendar included. */
+export function upcomingTextDays(families, from, events, detectFamily, count = 4, maxAhead = 21) {
+  const out = [];
+  for (let i = 0; i <= maxAhead && out.length < count; i++) {
+    const d = addDays(from, i);
+    if (visitsToText(families, d, events, detectFamily).length) out.push(d);
+  }
+  return out;
+}

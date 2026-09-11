@@ -175,7 +175,9 @@ export function DayTab({ caseload, today, counts, supplies, soon, openCount, uns
       {unsent.length > 0 && reminderDay && (
         <button onClick={onGoTexts} style={S.nudge}>
           <div style={S.nudgeTitle}>Send reminders for {spokenDate(reminderDay)}</div>
-          <div style={S.nudgeSub}>{unsent.map((c) => `${c.name} at ${c.time}`).join(", ")}</div>
+          <div style={S.nudgeSub}>
+            {unsent.map(({ c, time }) => `${c.name} at ${time}`).join(", ")}
+          </div>
         </button>
       )}
 

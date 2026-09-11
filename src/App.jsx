@@ -16,7 +16,7 @@ import { copyText } from "./lib/clipboard.js";
 import { available as storageAvailable } from "./lib/storage.js";
 import { readWho, writeWho, laneLabels, PEOPLE, readSeenAt, writeSeenAt, changesFromOther, nameOf } from "./lib/identity.js";
 import { resolveToday, addDays, iso, dueInfo } from "./lib/dates.js";
-import { visitsOn, nextVisitDay, liveAgendaFor } from "./lib/schedule.js";
+import { liveAgendaFor, visitsToText, upcomingTextDays } from "./lib/schedule.js";
 import { useCalendar } from "./lib/useCalendar.js";
 import { detectFamily } from "./lib/parse.js";
 
@@ -167,12 +167,19 @@ export default function App({ caseload, onLock, crypto }) {
 
   /* Reminders go out the night before. If tomorrow is a Saturday, the next
      day that actually has visits is the useful thing to show. */
-  const reminderDay = useMemo(() => nextVisitDay(families, addDays(today, 1)), [families, today]);
+  /* The day to text about, and who still needs one. Both read the calendar
+     where it has been read, so the nudge on the day view and the messages in
+     the texts tab can never name different times. */
+  const reminderDay = useMemo(
+    () => upcomingTextDays(families, addDays(today, 1), calendar.events, detectFamily, 1)[0] || null,
+    [families, today, calendar.events]
+  );
   const unsent = useMemo(() => {
     if (!reminderDay) return [];
     const key = iso(reminderDay);
-    return visitsOn(families, reminderDay).filter((c) => c.texts && !board.sent[c.id + key]);
-  }, [families, reminderDay, board.sent]);
+    return visitsToText(families, reminderDay, calendar.events, detectFamily)
+      .filter((v) => !board.sent[v.c.id + key]);
+  }, [families, reminderDay, calendar.events, board.sent]);
 
   const searchResult = useMemo(
     () => (searching ? searchCaseload(families, board.tasks, query) : null),
@@ -421,6 +428,8 @@ export default function App({ caseload, onLock, crypto }) {
             setSent={board.setSent}
             copy={copy}
             initialDay={reminderDay}
+            events={calendar.events}
+            detectFamily={detectFamily}
             onFlash={flash}
           />
         )}
