@@ -3,6 +3,7 @@ import { S, LINE } from "../styles.js";
 import { iso } from "../lib/dates.js";
 import { PEOPLE } from "../lib/identity.js";
 import { handOff } from "../lib/handoff.js";
+import { runningBuild, startAgain } from "../lib/fresh.js";
 
 /* Everything the board remembers lives in one browser. Clearing site data,
    a new phone or a reinstall takes it with it, so a backup is not optional
@@ -150,6 +151,14 @@ export function BackupSheet({ close, exportBlob, importBlob, onLock, who, setWho
             )}
             {calendar.error && <div style={{ ...S.tip, color: "#C62A40" }}>{calendar.error}</div>}
 
+            {/* Printed rather than hidden: when sign-in is refused, the first
+                question is always which id was actually used, and a phone
+                running an old bundle answers it differently than the deploy. */}
+            <div style={{ ...S.tip, wordBreak: "break-all" }}>
+              Using client id <strong>{calendar.clientId || "none set"}</strong>
+              {calendar.ownProject ? " (pasted on this device)" : ""}
+            </div>
+
             {showProject || !calendar.haveId || (calendar.error && !calendar.connected) ? (
               <div style={{ marginTop: 10 }}>
                 <div style={S.fieldLabel}>Google client id</div>
@@ -222,6 +231,22 @@ export function BackupSheet({ close, exportBlob, importBlob, onLock, who, setWho
               Restore from a file
             </button>
             <input ref={file} type="file" accept="application/json,.json" onChange={pick} style={{ display: "none" }} />
+
+            <div style={{ borderTop: `1px solid ${LINE}`, marginTop: 20, paddingTop: 16 }}>
+              <div style={S.fieldLabel}>This device is running build {runningBuild()}</div>
+              <div style={{ ...S.tip, marginTop: 2 }}>
+                If something here looks older than it should, the phone is still on a
+                previous version. This drops the stored copy and loads the current one.
+                Ticks and notes are on the shared board and are not touched.
+              </div>
+              <button
+                onClick={startAgain}
+                style={{ ...S.bigBtn, background: "#fff", color: "#2F2A3D", border: `1.5px solid ${LINE}` }}
+                aria-label="Reload the latest version"
+              >
+                Get the latest version
+              </button>
+            </div>
 
             <div style={{ borderTop: `1px solid ${LINE}`, marginTop: 20, paddingTop: 16 }}>
               <div style={S.sub}>

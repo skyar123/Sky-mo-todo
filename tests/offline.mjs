@@ -58,4 +58,28 @@ try {
 }
 
 await ctx.setOffline(false);
+
+/* The escape hatch, for a phone that is somehow still on an old bundle. It
+   throws away the worker and everything it cached, so the thing to prove is
+   that it does not brick the app: the board comes back and so does offline. */
+await page.reload({ waitUntil: "domcontentloaded" });
+await page.waitForSelector(`text=${LONG[fx.today.getDay()]}`, { timeout: 25000 });
+await page.click('button[aria-label="Backup and lock"]');
+await page.waitForSelector('button[aria-label="Reload the latest version"]', { timeout: 8000 });
+await page.click('button[aria-label="Reload the latest version"]');
+await page.waitForTimeout(2500);
+try {
+  await page.waitForSelector(`text=${LONG[fx.today.getDay()]}`, { timeout: 25000 });
+  console.log("  after starting again: board still opens");
+} catch {
+  console.log("  after starting again: BOARD DID NOT COME BACK");
+  process.exitCode = 1;
+}
+const back = await page.evaluate(async () => {
+  const r = await navigator.serviceWorker.ready;
+  return !!r.active;
+});
+console.log("  offline support re-registered:", back ? "yes" : "NO");
+if (!back) process.exitCode = 1;
+
 await browser.close();

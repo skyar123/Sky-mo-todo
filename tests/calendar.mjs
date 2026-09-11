@@ -122,6 +122,11 @@ await page.click('button[aria-label="Backup and lock"]');
 await page.waitForSelector('button:has-text("Connect Google Calendar")', { timeout: 8000 });
 ok("the shipped client id means connecting is one tap");
 
+check(
+  (await page.textContent("body")).includes("Using client id 891188470243-"),
+  "settings names the client id in use, so a refusal can be diagnosed"
+);
+
 await page.click('button:has-text("Use a different Google project")');
 await page.waitForSelector('input[aria-label="Google client id"]', { timeout: 8000 });
 await page.fill('input[aria-label="Google client id"]', "not-a-client-id");
@@ -145,6 +150,10 @@ asked?.scope === "https://www.googleapis.com/auth/calendar.readonly"
   ? ok("asks for read-only access only")
   : bad(`wrong scope: ${asked?.scope}`);
 check(asked?.clientId === PASTED, "the pasted client id is the one Google is asked with");
+check(
+  (await page.textContent("body")).includes(`Using client id ${PASTED}`),
+  "and settings now names the pasted one, not the shipped one"
+);
 
 const sheet = await page.textContent('div[role], body');
 /Child First-Skylar/.test(sheet)
