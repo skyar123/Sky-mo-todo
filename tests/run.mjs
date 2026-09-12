@@ -84,6 +84,8 @@ try {
   await waitFor(`http://localhost:${API_PORT}/api/board`, "api stub");
   await waitFor(BASE, "preview server");
   await assertApiProxy();
+  console.log("\n— the note parser —");
+  await run("node", ["tests/extract.mjs"], { env: childEnv });
   console.log("\n— end to end —");
   await run("node", ["tests/e2e.mjs"], { env: { ...childEnv, BASE } });
   console.log("\n— offline —");

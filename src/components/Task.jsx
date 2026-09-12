@@ -40,7 +40,11 @@ export function Task({ x, color, today, families, familyById, board, who, onFlas
       <div style={S.taskTop}>
         <button
           onClick={() => board.toggle(x.id)}
-          style={{ ...S.box, borderColor: color, background: x.done ? color : "transparent" }}
+          style={{
+            ...S.box,
+            borderColor: x.urgent && !x.done ? "#C62A40" : color,
+            background: x.done ? color : "transparent",
+          }}
           role="checkbox"
           aria-checked={x.done}
           aria-label={x.done ? `Mark not done: ${x.text}` : `Mark done: ${x.text}`}
@@ -54,6 +58,14 @@ export function Task({ x, color, today, families, familyById, board, who, onFlas
         >
           {x.text}
         </button>
+        {x.urgent && (
+          <span
+            style={{ ...S.pill, background: "#C62A40", color: "#fff", borderColor: "#C62A40" }}
+            title="Came in under Safety flags"
+          >
+            Safety
+          </span>
+        )}
         {d && <span style={{ ...S.pill, ...pillStyle(d) }}>{d.label}</span>}
       </div>
 

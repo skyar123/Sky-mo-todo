@@ -26,6 +26,15 @@ const SECTIONS = [
 
 const STOP_SECTION = /^\s*\d+\.\s|^\s*(the visit|clinical lens|at a glance|abecedarian)/i;
 
+/* "None surfaced in this meeting" is the answer to the heading, not an item
+   under it, and as a Safety task it would be the loudest thing on the board
+   while saying nothing. Only skipped when the sentence stays negative: a
+   paragraph that turns ("none today, but she mentioned") is the case the
+   heading exists for. */
+const NEGATIVE = /^\s*(none|nothing|no\b|n\/a|not applicable)/i;
+const TURNS = /\b(but|however|though|although|except|watch|keep an eye|monitor)\b/i;
+const isNilAnswer = (s) => NEGATIVE.test(s) && !TURNS.test(s);
+
 /* Trim a long sentence down to the part that says what to do. The rest is
    kept, just not in the title. */
 export function simplify(line, { keepLong = false } = {}) {
@@ -99,6 +108,7 @@ export function extractFromNote(text, { families, today }) {
   const push = (raw, sec) => {
     const body = raw.replace(CHECKBOX, "").replace(BULLET, "").trim();
     if (body.length < 8) return;
+    if (isNilAnswer(body)) return;
     const text2 = simplify(body, { keepLong: !!sec?.urgent });
     items.push({
       text: text2,
@@ -165,9 +175,14 @@ export function extractFromNote(text, { families, today }) {
       continue;
     }
 
-    /* A Safety flags block is often a paragraph rather than checkboxes, and it
-       is the one section too important to drop on a formatting difference. */
-    if (section?.urgent && line.trim().length > 24) {
+    /* Inside a Follow-Up heading, a paragraph with no checkbox is still an
+       item. Safety flags are usually written that way, and so, it turns out,
+       is "Bring to the clinical partner" whenever the thought is a sentence
+       rather than a task. Requiring the checkbox silently dropped exactly the
+       items that were most worth carrying to the clinician. A heading is a
+       strong enough signal on its own; the length bar keeps stray fragments
+       out. */
+    if (section && line.trim().length > 24) {
       push(line, section);
     }
   }
@@ -196,6 +211,10 @@ export function itemsToTasks(items, { client, lane }) {
     due: i.due,
     note: i.note,
     agenda: !!i.agenda,
+    /* A safety flag is the one item that must not read like the rest. It is
+       marked red while the extraction is being reviewed, and it kept nothing
+       once it reached the board, which is the wrong way round. */
+    urgent: !!i.urgent,
     done: false,
     seed: false,
   }));
