@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from "react";
 import { S, LINE } from "../styles.js";
 import { parseNotes } from "../lib/parse.js";
-import { extractFromNote, itemsToTasks } from "../lib/extract.js";
+import { extractFromDoc, itemsToTasks } from "../lib/extract.js";
 
 /* A full visit note and a scratch list of thoughts want different treatment.
    A note carries its own structure, so it gets read structurally and shown
@@ -21,14 +21,22 @@ export function AddSheet({ families, today, close, add, flash }) {
 
   const isNote = useMemo(() => looksLikeNote(txt), [txt]);
   const parsed = useMemo(
-    () => (isNote && txt.trim() ? extractFromNote(txt, { families, today }) : null),
+    () => (isNote && txt.trim() ? extractFromDoc(txt, { families, today }) : null),
     [isNote, txt, families, today]
   );
 
   const chosen = parsed ? parsed.items.filter((_, i) => !skipped[i]) : [];
-  const familyName = parsed?.client
-    ? families.find((f) => f.id === parsed.client)?.name
-    : null;
+  const nameOf = (id) => (id ? families.find((f) => f.id === id)?.name : null);
+  const familyName = nameOf(parsed?.client);
+
+  /* The weekly document holds every family at once, so naming a single one
+     over eight families' items would be a lie. Say how many instead. */
+  const spread = parsed && parsed.families > 1;
+  const heading = spread
+    ? `Reads as ${parsed.families} families`
+    : familyName
+      ? `Reads as ${familyName}`
+      : "No family recognised, pick one below";
 
   function commit() {
     if (parsed) {
@@ -36,7 +44,9 @@ export function AddSheet({ families, today, close, add, flash }) {
         flash("Nothing selected");
         return;
       }
-      add(itemsToTasks(chosen, { client: cid || parsed.client }));
+      /* Picking a family by hand overrides what each block said it was. */
+      const items = cid ? chosen.map((i) => ({ ...i, client: cid })) : chosen;
+      add(itemsToTasks(items, { client: cid || parsed.client }));
       flash(`${chosen.length} added`);
       close();
       return;
@@ -57,7 +67,7 @@ export function AddSheet({ families, today, close, add, flash }) {
         <div style={{ ...S.h2, marginTop: 0 }}>{parsed ? "From your note" : "Paste notes"}</div>
         <div style={S.sub}>
           {parsed
-            ? "Paste a whole visit note and the follow-up items come out. Tap any one to leave it behind."
+            ? "Paste a visit note, or the whole weekly document, and the follow-up items come out under the family each one belongs to. Tap any one to leave it behind."
             : "One thought per line, or paste a whole visit note. Family names and dates like 9/22 get picked up on their own."}
         </div>
 
@@ -74,17 +84,26 @@ export function AddSheet({ families, today, close, add, flash }) {
         {parsed && (
           <div style={{ marginBottom: 14 }}>
             <div style={S.fieldLabel}>
-              {familyName ? `Reads as ${familyName}` : "No family recognised, pick one below"}
+              {heading}
               {" · "}
               {chosen.length} of {parsed.items.length}
             </div>
             <div style={{ maxHeight: "34vh", overflowY: "auto", marginTop: 8 }}>
               {parsed.items.map((item, i) => {
                 const off = !!skipped[i];
-                const prev = i > 0 ? parsed.items[i - 1].section : null;
+                const before = i > 0 ? parsed.items[i - 1] : null;
+                const prev = before ? before.section : null;
+                /* Across families the section headings repeat, so the family
+                   is what tells you where you are in the list. */
+                const newFamily = spread && (!before || before.client !== item.client);
                 return (
                   <React.Fragment key={i}>
-                    {item.section !== prev && <div style={S.kindHead}>{item.section}</div>}
+                    {newFamily && (
+                      <div style={{ ...S.h2, fontSize: 14, marginBottom: 0 }}>
+                        {nameOf(item.client) || "No family recognised"}
+                      </div>
+                    )}
+                    {(item.section !== prev || newFamily) && <div style={S.kindHead}>{item.section}</div>}
                     <button
                       onClick={() => setSkipped((p) => ({ ...p, [i]: !p[i] }))}
                       style={{

@@ -93,6 +93,59 @@ function sectionFor(line) {
  * Reads a whole visit note and returns tasks, plus what it understood, so the
  * result can be shown before anything is added.
  */
+/* The weekly sweep writes one document holding every family's note, blocks
+   separated by a rule and each headed "<Pseudonym>: Visit Notes". Read as a
+   single note that whole document collapses onto whichever family the first
+   line happened to name, which is worse than useless: eight families' items
+   filed under one. So split first, and read each block on its own. */
+const RULE = /^\s*\\?-{3,}\s*$/;
+const BLOCK_HEAD = /^\s*(.+?):\s*visit notes\b/i;
+
+export function splitBlocks(text) {
+  const lines = String(text || "").split(/\r?\n/);
+  const blocks = [];
+  let current = null;
+
+  for (const line of lines) {
+    if (RULE.test(line)) { current = null; continue; }
+    if (BLOCK_HEAD.test(line)) {
+      current = [line];
+      blocks.push(current);
+      continue;
+    }
+    if (current) current.push(line);
+  }
+
+  /* No headed blocks at all: an ordinary single note, pasted whole. */
+  if (!blocks.length) return [String(text || "")];
+  return blocks.map((b) => b.join("\n"));
+}
+
+/**
+ * Every follow-up item in a pasted document, each stamped with its own family.
+ *
+ * One block or twenty; the caller does not need to know which it was given.
+ */
+export function extractFromDoc(text, { families, today }) {
+  const blocks = splitBlocks(text);
+  const items = [];
+  const clients = new Set();
+
+  for (const b of blocks) {
+    const one = extractFromNote(b, { families, today });
+    for (const i of one.items) items.push({ ...i, client: one.client });
+    clients.add(one.client || null);
+  }
+
+  return {
+    items,
+    /* A single-family paste still answers "which family is this", which is
+       what the review screen says back before anything is added. */
+    client: clients.size === 1 ? [...clients][0] : null,
+    families: clients.size,
+  };
+}
+
 export function extractFromNote(text, { families, today }) {
   const lines = String(text || "").split(/\r?\n/);
 
@@ -204,7 +257,9 @@ export function itemsToTasks(items, { client, lane }) {
   const stamp = Date.now();
   return items.map((i, n) => ({
     id: `n${stamp}_${n}`,
-    client: client || null,
+    /* An item that already knows its family keeps it: a multi-family paste
+       must not be flattened onto one client by the caller's default. */
+    client: i.client !== undefined ? i.client : client || null,
     lane: lane || i.lane,
     kind: i.kind || "care",
     text: i.text,
