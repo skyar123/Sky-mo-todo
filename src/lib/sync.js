@@ -14,6 +14,20 @@ import { mergeShared } from "./shared.js";
 const ENDPOINT = "/api/board";
 const RETRIES = 4;
 
+/* Key order is not guaranteed to survive a merge, so two documents that hold
+   the same thing can serialise differently. Sorted keys make "has anything
+   actually changed" answerable. */
+function canonical(value) {
+  if (Array.isArray(value)) return `[${value.map(canonical).join(",")}]`;
+  if (value && typeof value === "object") {
+    return `{${Object.keys(value)
+      .sort()
+      .map((k) => `${JSON.stringify(k)}:${canonical(value[k])}`)
+      .join(",")}}`;
+  }
+  return JSON.stringify(value === undefined ? null : value);
+}
+
 /* Derived from the same key, so whoever can read the board can write to it and
    nobody else can. Not a secret from the two of them; a gate against a
    passer-by who found the URL. */
@@ -63,7 +77,16 @@ export async function syncOnce(localDoc, { key, token, salt, rev }) {
     known = remote.rev;
     merged = remote.doc ? mergeShared(remote.doc, localDoc) : localDoc;
 
-    /* Nothing of ours to add and the remote is readable: just take theirs. */
+    /* Nothing of ours to add and the remote is readable: just take theirs.
+       This used to say so and then write anyway, which turned the periodic
+       catch-up into a write every forty-five seconds per open device, for
+       ever, re-uploading a document nobody had changed. Two phones left open
+       is a few thousand writes a day against the function's quota, and the
+       first thing that would break is the sync itself. */
+    if (remote.doc && canonical(merged) === canonical(remote.doc)) {
+      return { doc: merged, rev: known, pushed: false, unchanged: true };
+    }
+
     const result = await put(merged, known, key, token, salt);
     if (result.ok) return { doc: merged, rev: result.ok.rev, pushed: true };
 

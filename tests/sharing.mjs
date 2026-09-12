@@ -148,4 +148,21 @@ await refresh(A);
   ? bad("the deleted task came back on A")
   : ok("a delete on one device sticks on the other");
 
+/* An idle board must not write. The catch-up timer pulls every forty-five
+   seconds so the other person's ticks arrive; it used to push every time as
+   well, re-uploading a document nobody had touched. Left open on two phones
+   that is thousands of writes a day against the function's quota, and the
+   first thing to break would have been the sync. */
+const revOf = async () => (await (await fetch(`${BASE}/api/board`)).json()).rev;
+const restAt = await revOf();
+/* Both devices are settled and in agreement. Poke each into a catch-up sync
+   the way returning to the app does, then see whether anything was written. */
+await A.evaluate(() => document.dispatchEvent(new Event("visibilitychange")));
+await B.evaluate(() => document.dispatchEvent(new Event("visibilitychange")));
+await A.waitForTimeout(4000);
+const afterRest = await revOf();
+afterRest === restAt
+  ? ok(`two idle boards syncing wrote nothing (revision stayed at ${restAt})`)
+  : bad(`an idle board is still writing: revision went ${restAt} -> ${afterRest}`);
+
 await browser.close();
