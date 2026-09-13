@@ -29,6 +29,16 @@ export function assignLabels(who) {
   return [["sky", "Me"], ["mo", "Mo"], ["both", "Both"]];
 }
 
+/* Which side the checkbox sits on. A right thumb reaches the right edge of a
+   phone and has to stretch for the left, which is where every checkbox here
+   is drawn. Device scoped: it is about the hand holding this phone, not about
+   the board. Left stays the default, because that is where a list expects
+   them and a surprise is worse than a stretch. */
+const HAND = "hand";
+export const readHand = () => (readJSON(HAND) === "right" ? "right" : "left");
+export const writeHand = (h) => writeJSON(HAND, h === "right" ? "right" : "left");
+export const HANDS = [["left", "Left"], ["right", "Right"]];
+
 /* When this device last caught up on the other person's changes. Device
    scoped, not shared: what Skylar has seen is not what Mo has seen. */
 const SEEN = "seen-at";

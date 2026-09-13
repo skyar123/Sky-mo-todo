@@ -176,11 +176,11 @@ export function useBoard(caseload, today, crypto, me) {
 
   /* Quick add straight into a family, without opening the paste sheet. */
   const addQuick = useCallback(
-    ({ text, client, lane = "both", kind = "care", due = null, agenda = false }) => {
+    ({ text, client, lane = "both", kind = "care", due = null, agenda = false, important = false }) => {
       const task = {
         id: `u${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
         client: client || null,
-        lane, kind, text: text.trim(), due, note: "", agenda, done: false, seed: false,
+        lane, kind, text: text.trim(), due, note: "", agenda, important, done: false, seed: false,
       };
       dirtyRef.current = true;
       setTasks((p) => [{ ...task, updatedAt: Date.now(), by: me || "unknown" }, ...p]);

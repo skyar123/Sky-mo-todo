@@ -6,11 +6,21 @@ import { isScheduled, timeKey } from "../lib/schedule.js";
 
 const DAY_ORDER = [1, 2, 3, 4, 5, 6, 0];
 
-export function FamiliesTab({ families, counts, supplies, changedFamilies, onOpenFamily }) {
+export function FamiliesTab({ families, counts, supplies, changedFamilies, loose, onOpenFamily, onOpenLoose }) {
   return (
     <>
       <div style={S.h1}>Families</div>
       <div style={S.sub}>{families.length} on the caseload</div>
+
+      {/* Anything belonging to no family used to be reachable only from the
+          teaming list, so taking one off that list put it somewhere with no
+          way back. Everything has a home now. */}
+      {loose > 0 && (
+        <button onClick={onOpenLoose} style={S.nudge}>
+          <div style={S.nudgeTitle}>{loose} not tied to a family</div>
+          <div style={S.nudgeSub}>Things you added for the caseload rather than for one family.</div>
+        </button>
+      )}
       {DAY_ORDER.map((d) => {
         const rows = families
           .filter((c) => (d === 0 ? !isScheduled(c) : c.day === d))

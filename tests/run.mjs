@@ -94,6 +94,8 @@ try {
   await run("node", ["tests/calendar.mjs"], { env: { ...childEnv, BASE } });
   console.log("\n— handing files to the phone —");
   await run("node", ["tests/handoff.mjs"], { env: { ...childEnv, BASE } });
+  console.log("\n— on a phone —");
+  await run("node", ["tests/phone.mjs"], { env: { ...childEnv, BASE } });
   console.log("\n— the weekly document into the board —");
   await run("node", ["tests/paste.mjs"], { env: { ...childEnv, BASE } });
   console.log("\n— the sweep writing to the board —");

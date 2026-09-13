@@ -20,12 +20,20 @@ function nextOccurrence(block, today) {
  */
 export function TeamingTab({ block, families, familyById, tasks, today, board, onOpenFamily, onFlash }) {
   const [text, setText] = useState("");
+  const [cid, setCid] = useState("");
+  const [important, setImportant] = useState(false);
+  const [openId, setOpenId] = useState(null);
 
   const when = nextOccurrence(block, today);
   const isToday = when && when.getDay() === today.getDay();
 
   const items = useMemo(() => tasks.filter((t) => t.agenda), [tasks]);
-  const open = items.filter((t) => !t.done);
+  /* Flagged first inside each family: the meeting is short and the order on
+     screen is the order it gets talked about. */
+  const open = items
+    .filter((t) => !t.done)
+    .slice()
+    .sort((a, b) => (b.important ? 1 : 0) - (a.important ? 1 : 0));
   const done = items.filter((t) => t.done);
 
   /* Grouped by family, with the unattached ones last: the meeting tends to
@@ -47,9 +55,17 @@ export function TeamingTab({ block, families, familyById, tasks, today, board, o
     e.preventDefault();
     const t = text.trim();
     if (t.length < 2) return;
-    board.addQuick({ text: t, client: null, lane: "both", kind: "admin", agenda: true });
+    board.addQuick({
+      text: t,
+      client: cid || null,
+      lane: "both",
+      kind: "admin",
+      agenda: true,
+      important,
+    });
     setText("");
-    onFlash?.("Added to Thursday");
+    setImportant(false);
+    onFlash?.(cid ? `Added for ${familyById.get(cid)?.name || "them"}` : "Added to Thursday");
   }
 
   return (
@@ -74,7 +90,32 @@ export function TeamingTab({ block, families, familyById, tasks, today, board, o
         />
         <button type="submit" style={{ ...S.mini, ...(text.trim() ? S.miniOn : {}) }}>Add</button>
       </form>
-      <div style={{ ...S.tip, marginTop: 0, marginBottom: 18 }}>
+
+      {/* Who it is about and whether it has to be reached, set before it goes
+          on rather than left for later, because later is Thursday morning. */}
+      <div style={{ ...S.rowWrap, marginTop: 6 }}>
+        <label className="sr-only" htmlFor="teamfam">Family this is about</label>
+        <select
+          id="teamfam"
+          value={cid}
+          onChange={(e) => setCid(e.target.value)}
+          style={S.select}
+          data-noswipe
+        >
+          <option value="">Not about one family</option>
+          {families.map((f) => <option key={f.id} value={f.id}>{f.name}</option>)}
+        </select>
+        <button
+          type="button"
+          onClick={() => setImportant((v) => !v)}
+          style={{ ...S.mini, ...(important ? { ...S.miniOn, background: "#C62A40", borderColor: "#C62A40" } : {}) }}
+          aria-pressed={important}
+        >
+          {important ? "★ Must cover" : "☆ Must cover"}
+        </button>
+      </div>
+
+      <div style={{ ...S.tip, marginTop: 4, marginBottom: 18 }}>
         Anything either of you flags for teaming lands here, and items a visit note
         marks for the clinician arrive on their own.
       </div>
@@ -104,33 +145,88 @@ export function TeamingTab({ block, families, familyById, tasks, today, board, o
 
           {rows.map((t) => {
             const d = dueInfo(t.due, today);
+            const showing = openId === t.id;
             return (
-              <div key={t.id} style={{ ...S.taskTop, borderBottom: `1px solid ${LINE}`, paddingBottom: 10 }}>
-                <button
-                  onClick={() => board.toggle(t.id)}
-                  style={{ ...S.box, borderColor: family ? family.color : "#B9AECE" }}
-                  role="checkbox"
-                  aria-checked={false}
-                  aria-label={`Mark discussed: ${t.text}`}
-                />
-                <span style={{ flex: 1, fontSize: 13.5, lineHeight: 1.45 }}>
-                  {t.text}
-                  {(t.note || t.by) && (
-                    <span style={{ display: "block", fontSize: 11.5, opacity: 0.55, marginTop: 3, lineHeight: 1.45 }}>
-                      {t.by && t.by !== "unknown" ? `${nameOf(t.by)} added this` : ""}
-                      {t.by && t.by !== "unknown" && t.note ? " · " : ""}
-                      {t.note ? t.note.slice(0, 90) + (t.note.length > 90 ? "…" : "") : ""}
-                    </span>
-                  )}
-                </span>
-                {d && <span style={{ ...S.pill, ...pillStyle(d) }}>{d.label}</span>}
-                <button
-                  onClick={() => board.update(t.id, { agenda: false })}
-                  style={{ ...S.mini, padding: "4px 9px", fontSize: 11 }}
-                  aria-label={`Take off the teaming list: ${t.text}`}
-                >
-                  off
-                </button>
+              <div key={t.id} style={{ borderBottom: `1px solid ${LINE}` }}>
+                <div style={{ ...S.taskTop, paddingBottom: 10 }} className="handed">
+                  <button
+                    onClick={() => board.toggle(t.id)}
+                    style={{
+                      ...S.box,
+                      borderColor: t.important ? "#C62A40" : family ? family.color : "#B9AECE",
+                    }}
+                    role="checkbox"
+                    aria-checked={false}
+                    aria-label={`Mark discussed: ${t.text}`}
+                  />
+                  {/* The whole line opens it. The old row had a tiny tick and a
+                      tiny "off" side by side, and "off" on something with no
+                      family put it out of reach, so the destructive one is no
+                      longer the easy one to hit by mistake. */}
+                  <button
+                    onClick={() => setOpenId(showing ? null : t.id)}
+                    style={{ ...S.taskText, fontSize: 13.5, lineHeight: 1.45 }}
+                    aria-expanded={showing}
+                  >
+                    {t.important && <span style={{ color: "#C62A40", fontWeight: 800 }}>★ </span>}
+                    {t.text}
+                    {(t.note || t.by) && (
+                      <span style={{ display: "block", fontSize: 11.5, opacity: 0.55, marginTop: 3, lineHeight: 1.45 }}>
+                        {t.by && t.by !== "unknown" ? `${nameOf(t.by)} added this` : ""}
+                        {t.by && t.by !== "unknown" && t.note ? " · " : ""}
+                        {t.note ? t.note.slice(0, 90) + (t.note.length > 90 ? "…" : "") : ""}
+                      </span>
+                    )}
+                  </button>
+                  {d && <span style={{ ...S.pill, ...pillStyle(d) }}>{d.label}</span>}
+                </div>
+
+                {showing && (
+                  <div style={{ ...S.taskBody, paddingBottom: 14 }} className="handed-body">
+                    <div style={S.editLabel}>Family this is about</div>
+                    <select
+                      value={t.client || ""}
+                      onChange={(e) => board.update(t.id, { client: e.target.value || null })}
+                      style={{ ...S.select, width: "100%", flex: "none" }}
+                      aria-label="Family this is about"
+                      data-noswipe
+                    >
+                      <option value="">Not about one family</option>
+                      {families.map((f) => <option key={f.id} value={f.id}>{f.name}</option>)}
+                    </select>
+
+                    <div style={{ ...S.rowWrap, marginTop: 10 }}>
+                      <button
+                        onClick={() => board.update(t.id, { important: !t.important })}
+                        style={{ ...S.mini, ...(t.important ? { ...S.miniOn, background: "#C62A40", borderColor: "#C62A40" } : {}) }}
+                        aria-pressed={!!t.important}
+                      >
+                        {t.important ? "★ Must cover" : "☆ Must cover"}
+                      </button>
+                      <button
+                        onClick={() => {
+                          board.update(t.id, { agenda: false });
+                          setOpenId(null);
+                          onFlash?.(
+                            t.client
+                              ? `Off the list, still on ${familyById.get(t.client)?.name || "the family"}`
+                              : "Off the list, in Families under “not tied to a family”"
+                          );
+                        }}
+                        style={S.mini}
+                        aria-label={`Take off the teaming list: ${t.text}`}
+                      >
+                        Take off the list
+                      </button>
+                    </div>
+                    {t.note && (
+                      <>
+                        <div style={{ ...S.editLabel, marginTop: 12 }}>Note</div>
+                        <div style={{ fontSize: 13, lineHeight: 1.5, opacity: 0.75 }}>{t.note}</div>
+                      </>
+                    )}
+                  </div>
+                )}
               </div>
             );
           })}

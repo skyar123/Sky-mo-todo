@@ -1,14 +1,14 @@
 import React, { useRef, useState } from "react";
 import { S, LINE } from "../styles.js";
 import { iso } from "../lib/dates.js";
-import { PEOPLE } from "../lib/identity.js";
+import { PEOPLE, HANDS } from "../lib/identity.js";
 import { handOff } from "../lib/handoff.js";
 import { runningBuild, startAgain } from "../lib/fresh.js";
 
 /* Everything the board remembers lives in one browser. Clearing site data,
    a new phone or a reinstall takes it with it, so a backup is not optional
    housekeeping. The file is written locally and never uploaded. */
-export function BackupSheet({ close, exportBlob, importBlob, onLock, who, setWho, shared, calendar, today, flash, storageOk }) {
+export function BackupSheet({ close, exportBlob, importBlob, onLock, who, setWho, hand, setHand, shared, calendar, today, flash, storageOk }) {
   const file = useRef(null);
   const [confirmImport, setConfirmImport] = useState(null);
   const [showProject, setShowProject] = useState(false);
@@ -88,6 +88,25 @@ export function BackupSheet({ close, exportBlob, importBlob, onLock, who, setWho
             </div>
           </div>
         )}
+
+        <div style={{ marginBottom: 18 }}>
+          <div style={S.fieldLabel}>Which side the tick boxes sit on</div>
+          <div style={{ ...S.rowWrap, marginTop: 6 }}>
+            {HANDS.map(([k, l]) => (
+              <button
+                key={k}
+                onClick={() => setHand(k)}
+                style={{ ...S.mini, ...(hand === k ? S.miniOn : {}) }}
+                aria-pressed={hand === k}
+              >
+                {l}
+              </button>
+            ))}
+          </div>
+          <div style={{ ...S.tip, marginTop: 4 }}>
+            Put them under the thumb that holds the phone. This device only.
+          </div>
+        </div>
 
         {!storageOk && (
           <div style={{ ...S.rules, background: "#FFF1F1", borderColor: "#F5B0B0" }}>

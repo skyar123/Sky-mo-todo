@@ -21,7 +21,7 @@ export const S = {
   tabOn: { opacity: 1, borderBottomColor: INK },
 
   searchWrap: { padding: "0 16px 10px" },
-  search: { width: "100%", fontFamily: F, fontSize: 15, padding: "10px 12px", borderRadius: 11, border: `1.5px solid ${LINE}`, background: "#fff", color: INK },
+  search: { width: "100%", fontFamily: F, fontSize: 16, padding: "10px 12px", borderRadius: 11, border: `1.5px solid ${LINE}`, background: "#fff", color: INK },
 
   main: { padding: "18px 16px 0", minHeight: "70vh" },
   h1: { fontSize: 26, fontWeight: 800, letterSpacing: -0.6, lineHeight: 1.1 },
@@ -38,7 +38,7 @@ export const S = {
   blockRow: { display: "flex", gap: 10, alignItems: "center", padding: "13px 2px", borderBottom: `1px solid ${LINE}`, fontSize: 14.5, opacity: 0.65 },
   blockTime: { fontSize: 13, fontWeight: 700, width: 44 },
 
-  nudge: { display: "block", width: "100%", textAlign: "left", marginTop: 22, padding: "14px 15px", borderRadius: 16, border: "1.5px solid #FFD9C2", background: "#FFF6EF", fontFamily: F, color: INK, cursor: "pointer" },
+  nudge: { display: "block", width: "auto", textAlign: "left", marginTop: 22, padding: "14px 15px", borderRadius: 16, border: "1.5px solid #FFD9C2", background: "#FFF6EF", fontFamily: F, color: INK, cursor: "pointer" },
   nudgeTitle: { fontSize: 15, fontWeight: 700 },
   nudgeSub: { fontSize: 12.5, opacity: 0.65, marginTop: 3, lineHeight: 1.45 },
 
@@ -67,8 +67,8 @@ export const S = {
   note: { fontSize: 12.5, opacity: 0.68, lineHeight: 1.5, marginBottom: 9 },
 
   editLabel: { fontSize: 10.5, fontWeight: 700, opacity: 0.45, margin: "8px 0 3px" },
-  editInput: { width: "100%", fontFamily: F, fontSize: 14, lineHeight: 1.4, padding: "9px 10px", borderRadius: 10, border: `1.5px solid ${LINE}`, background: "#fff", color: INK },
-  editArea: { width: "100%", fontFamily: F, fontSize: 13, lineHeight: 1.5, padding: "9px 10px", borderRadius: 10, border: `1.5px solid ${LINE}`, background: "#fff", color: INK, resize: "vertical" },
+  editInput: { width: "100%", fontFamily: F, fontSize: 16, lineHeight: 1.4, padding: "9px 10px", borderRadius: 10, border: `1.5px solid ${LINE}`, background: "#fff", color: INK },
+  editArea: { width: "100%", fontFamily: F, fontSize: 16, lineHeight: 1.5, padding: "9px 10px", borderRadius: 10, border: `1.5px solid ${LINE}`, background: "#fff", color: INK, resize: "vertical" },
   editRow: { display: "flex", gap: 6, alignItems: "center" },
   quickAdd: { display: "flex", gap: 6, alignItems: "center", padding: "10px 0 4px" },
 
@@ -94,8 +94,8 @@ export const S = {
   rules: { background: "#FFFBEE", border: "1.5px solid #F5E3B0", borderRadius: 14, padding: "11px 13px", marginBottom: 14 },
   rule: { fontSize: 12, lineHeight: 1.6, opacity: 0.85 },
 
-  textarea: { width: "100%", fontFamily: F, fontSize: 15, lineHeight: 1.5, padding: 12, borderRadius: 13, border: `1.5px solid ${LINE}`, background: "#fff", color: INK, resize: "vertical", marginBottom: 12 },
-  select: { flex: 1, minWidth: 130, fontFamily: F, fontSize: 13, padding: "10px", borderRadius: 11, border: `1.5px solid ${LINE}`, background: "#fff", color: INK },
+  textarea: { width: "100%", fontFamily: F, fontSize: 16, lineHeight: 1.5, padding: 12, borderRadius: 13, border: `1.5px solid ${LINE}`, background: "#fff", color: INK, resize: "vertical", marginBottom: 12 },
+  select: { flex: 1, minWidth: 130, fontFamily: F, fontSize: 16, padding: "10px", borderRadius: 11, border: `1.5px solid ${LINE}`, background: "#fff", color: INK },
   bigBtn: { width: "100%", padding: "14px 0", borderRadius: 13, border: "none", background: INK, color: "#fff", fontFamily: F, fontSize: 15, fontWeight: 700, cursor: "pointer" },
   textBtn: { width: "100%", padding: "12px 0", background: "transparent", border: "none", fontFamily: F, fontSize: 14, color: INK, opacity: 0.55, cursor: "pointer" },
 
@@ -130,6 +130,25 @@ export const S = {
 export const CSS = `
   * { -webkit-tap-highlight-color: transparent; box-sizing: border-box; }
   body { margin: 0; background: ${PAPER}; }
+
+  /* Nothing may push the page sideways. A phone that scrolls horizontally
+     cuts the right-hand end off every line, and the line is the task. */
+  html, body { max-width: 100%; overflow-x: hidden; }
+
+  /* Every control on a phone is operated by a thumb, which is about 44px
+     across. Several here are drawn at 22. The drawing stays as it is and the
+     touch area grows around it, so nothing moves and everything is hittable. */
+  [role="checkbox"], .tap { position: relative; }
+  [role="checkbox"]::after, .tap::after {
+    content: ""; position: absolute; top: 50%; left: 50%;
+    width: 44px; height: 44px; transform: translate(-50%, -50%);
+  }
+
+  /* Which side the checkbox sits on. A right thumb reaches the right edge and
+     struggles at the left, and half the world is the other way round, so it
+     is a setting rather than a guess. */
+  [data-hand="right"] .handed { flex-direction: row-reverse; }
+  [data-hand="right"] .handed-body { padding-left: 0; padding-right: 32px; }
   button:focus-visible, textarea:focus-visible, select:focus-visible, input:focus-visible {
     outline: 3px solid #5C6BD8; outline-offset: 2px;
   }

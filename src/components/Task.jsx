@@ -37,7 +37,7 @@ export function Task({ x, color, today, families, familyById, board, who, onFlas
 
   return (
     <div style={{ ...S.task, opacity: x.done ? 0.45 : 1 }}>
-      <div style={S.taskTop}>
+      <div style={S.taskTop} className="handed">
         <button
           onClick={() => board.toggle(x.id)}
           style={{
@@ -70,7 +70,7 @@ export function Task({ x, color, today, families, familyById, board, who, onFlas
       </div>
 
       {open && (
-        <div style={S.taskBody}>
+        <div style={S.taskBody} className="handed-body">
           <div style={S.editLabel}>Task</div>
           <input
             value={x.text}

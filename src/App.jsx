@@ -4,6 +4,8 @@ import { Toast } from "./components/bits.jsx";
 import { DayTab } from "./components/DayTab.jsx";
 import { FamiliesTab } from "./components/FamiliesTab.jsx";
 import { FamilyDetail } from "./components/FamilyDetail.jsx";
+import { LooseTasks } from "./components/LooseTasks.jsx";
+import { WeekTab } from "./components/WeekTab.jsx";
 import { TextsTab } from "./components/TextsTab.jsx";
 import { PrintTab } from "./components/PrintTab.jsx";
 import { AddSheet } from "./components/AddSheet.jsx";
@@ -14,14 +16,14 @@ import { useBoard } from "./lib/board.js";
 import { useSwipe } from "./lib/swipe.js";
 import { copyText } from "./lib/clipboard.js";
 import { available as storageAvailable } from "./lib/storage.js";
-import { readWho, writeWho, laneLabels, PEOPLE, readSeenAt, writeSeenAt, changesFromOther, nameOf, sourceOf } from "./lib/identity.js";
+import { readWho, writeWho, laneLabels, PEOPLE, readSeenAt, writeSeenAt, changesFromOther, nameOf, sourceOf, readHand, writeHand } from "./lib/identity.js";
 import { resolveToday, addDays, iso, dueInfo } from "./lib/dates.js";
 import { liveAgendaFor, visitsToText, upcomingTextDays } from "./lib/schedule.js";
 import { useCalendar } from "./lib/useCalendar.js";
 import { detectFamily } from "./lib/parse.js";
 
-const TABS = ["day", "families", "texts", "print"];
-const TAB_LABELS = [["day", "Day"], ["families", "Families"], ["texts", "Texts"], ["print", "Print"]];
+const TABS = ["day", "families", "week", "texts", "print"];
+const TAB_LABELS = [["day", "Day"], ["families", "Families"], ["week", "Week"], ["texts", "Texts"], ["print", "Print"]];
 
 /* How the sharing state reads in the header. Deliberately quiet: this only
    needs attention when it is failing. */
@@ -44,6 +46,7 @@ export default function App({ caseload, onLock, crypto }) {
   /* Declared before useBoard: the board stamps changes with whoever is holding
      the device, so it needs this value on the first render. */
   const [who, setWho] = useState(() => readWho());
+  const [hand, setHand] = useState(() => readHand());
   const [seenAt, setSeenAt] = useState(() => readSeenAt());
 
   const board = useBoard(caseload, today, crypto, who);
@@ -54,6 +57,7 @@ export default function App({ caseload, onLock, crypto }) {
   const [openId, setOpenId] = useState(null);
   const [addOpen, setAddOpen] = useState(false);
   const [teamingOpen, setTeamingOpen] = useState(false);
+  const [looseOpen, setLooseOpen] = useState(false);
   const [backupOpen, setBackupOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [searching, setSearching] = useState(false);
@@ -114,6 +118,10 @@ export default function App({ caseload, onLock, crypto }) {
   }, [laneTasks, today]);
 
   const byId = useMemo(() => new Map(families.map((c) => [c.id, c])), [families]);
+
+  /* Open items belonging to no family. They need a door of their own, or
+     taking one off the teaming list hides it with no way back. */
+  const looseCount = useMemo(() => laneTasks.filter((t) => !t.client).length, [laneTasks]);
 
   /* The standing meeting you turn up to with a list. Found by label rather
      than by weekday, so moving it does not orphan the agenda. */
@@ -218,17 +226,17 @@ export default function App({ caseload, onLock, crypto }) {
       if (el && el.matches("input, textarea, select")) return;
       if (e.key === "ArrowRight") stepTab(1);
       else if (e.key === "ArrowLeft") stepTab(-1);
-      else if (e.key === "Escape") { setOpenId(null); setSearching(false); setTeamingOpen(false); }
+      else if (e.key === "Escape") { setOpenId(null); setSearching(false); setTeamingOpen(false); setLooseOpen(false); }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [stepTab]);
 
   const openFamily = openId ? byId.get(openId) : null;
-  const showPrint = tab === "print" && !openFamily && !searching && !teamingOpen;
+  const showPrint = tab === "print" && !openFamily && !searching && !teamingOpen && !looseOpen;
 
   return (
-    <div style={S.app} {...swipe}>
+    <div style={S.app} data-hand={hand} {...swipe}>
       <style>{CSS}</style>
 
       <header style={S.head} className="noprint">
@@ -248,7 +256,7 @@ export default function App({ caseload, onLock, crypto }) {
               ))}
             </div>
             <button
-              onClick={() => { setSearching((s) => !s); setOpenId(null); setTeamingOpen(false); }}
+              onClick={() => { setSearching((s) => !s); setOpenId(null); setTeamingOpen(false); setLooseOpen(false); }}
               style={{ ...S.iconBtn, ...(searching ? S.iconBtnOn : {}) }}
               aria-label={searching ? "Close search" : "Search"}
               aria-pressed={searching}
@@ -302,9 +310,9 @@ export default function App({ caseload, onLock, crypto }) {
             {TAB_LABELS.map(([k, l]) => (
               <button
                 key={k}
-                onClick={() => { setTab(k); setOpenId(null); setTeamingOpen(false); }}
-                style={{ ...S.tab, ...(tab === k && !openFamily && !teamingOpen ? S.tabOn : {}) }}
-                aria-current={tab === k && !openFamily && !teamingOpen ? "page" : undefined}
+                onClick={() => { setTab(k); setOpenId(null); setTeamingOpen(false); setLooseOpen(false); }}
+                style={{ ...S.tab, ...(tab === k && !openFamily && !teamingOpen && !looseOpen ? S.tabOn : {}) }}
+                aria-current={tab === k && !openFamily && !teamingOpen && !looseOpen ? "page" : undefined}
               >
                 {l}
               </button>
@@ -349,7 +357,20 @@ export default function App({ caseload, onLock, crypto }) {
           <div style={S.empty}>Type at least two letters.</div>
         )}
 
-        {!searching && teamingOpen && (
+        {!searching && looseOpen && (
+          <LooseTasks
+            tasks={board.tasks}
+            families={families}
+            familyById={byId}
+            today={today}
+            board={boardWithUndo}
+            who={who}
+            onFlash={flash}
+            onBack={() => setLooseOpen(false)}
+          />
+        )}
+
+        {!searching && !looseOpen && teamingOpen && (
           <>
             <div style={S.famNav}>
               <button onClick={() => setTeamingOpen(false)} style={S.back}>‹ back</button>
@@ -367,7 +388,7 @@ export default function App({ caseload, onLock, crypto }) {
           </>
         )}
 
-        {!searching && !teamingOpen && openFamily && (
+        {!searching && !teamingOpen && !looseOpen && openFamily && (
           <FamilyDetail
             c={openFamily}
             tasks={board.tasks}
@@ -383,7 +404,7 @@ export default function App({ caseload, onLock, crypto }) {
           />
         )}
 
-        {!searching && !teamingOpen && !openFamily && tab === "day" && (
+        {!searching && !teamingOpen && !looseOpen && !openFamily && tab === "day" && (
           <DayTab
             caseload={caseload}
             today={today}
@@ -410,17 +431,28 @@ export default function App({ caseload, onLock, crypto }) {
           />
         )}
 
-        {!searching && !teamingOpen && !openFamily && tab === "families" && (
+        {!searching && !teamingOpen && !looseOpen && !openFamily && tab === "families" && (
           <FamiliesTab
             families={families}
             counts={counts}
             supplies={board.supplies}
             changedFamilies={changedFamilies}
+            loose={looseCount}
+            onOpenFamily={goFamily}
+            onOpenLoose={() => { setLooseOpen(true); setOpenId(null); }}
+          />
+        )}
+
+        {!searching && !teamingOpen && !looseOpen && !openFamily && tab === "week" && (
+          <WeekTab
+            tasks={board.tasks}
+            families={families}
+            today={today}
             onOpenFamily={goFamily}
           />
         )}
 
-        {!searching && !teamingOpen && !openFamily && tab === "texts" && (
+        {!searching && !teamingOpen && !looseOpen && !openFamily && tab === "texts" && (
           <TextsTab
             families={families}
             today={today}
@@ -474,6 +506,8 @@ export default function App({ caseload, onLock, crypto }) {
           calendar={calendar}
           who={who}
           setWho={(k) => { writeWho(k); setWho(k); }}
+          hand={hand}
+          setHand={(h) => { writeHand(h); setHand(h); }}
           today={today}
           flash={flash}
           storageOk={storageOk}

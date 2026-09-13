@@ -10,7 +10,10 @@
    straight back from the other's copy on the next sync. */
 
 export const SHARED_VERSION = 1;
-const EDITABLE = ["text", "due", "note", "client", "kind", "agenda"];
+/* What one person can change about a seeded task and have the other see.
+   "important" is here because a thing marked must-cover on one phone that
+   stays unmarked on the other is worse than no flag at all. */
+const EDITABLE = ["text", "due", "note", "client", "kind", "agenda", "important"];
 
 /* An entry this device has never touched carries no timestamp, and must not
    be given one. Stamping it with "now" would make a device that merely
