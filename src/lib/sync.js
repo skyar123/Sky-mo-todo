@@ -11,6 +11,9 @@
 import { encryptWithKey, decryptWithKey, exportKey, toB64 } from "./crypto.js";
 import { mergeShared } from "./shared.js";
 
+/* Relative in the browser, where the board is served from the same origin.
+   The weekly importer runs in Node with no origin to be relative to, so it
+   passes an absolute one rather than keeping a second copy of this file. */
 const ENDPOINT = "/api/board";
 const RETRIES = 4;
 
@@ -38,8 +41,8 @@ export async function writeToken(key) {
   return toB64(digest);
 }
 
-export async function pull(key) {
-  const res = await fetch(ENDPOINT, { cache: "no-store" });
+export async function pull(key, endpoint = ENDPOINT) {
+  const res = await fetch(endpoint, { cache: "no-store" });
   if (!res.ok) throw new Error(`pull ${res.status}`);
   const { rev, blob } = await res.json();
   if (!blob) return { rev: rev || 0, doc: null };
@@ -52,9 +55,9 @@ export async function pull(key) {
   }
 }
 
-async function put(doc, rev, key, token, salt) {
+async function put(doc, rev, key, token, salt, endpoint = ENDPOINT) {
   const payload = await encryptWithKey(doc, key, salt);
-  const res = await fetch(ENDPOINT, {
+  const res = await fetch(endpoint, {
     method: "PUT",
     headers: { "content-type": "application/json", "x-skymo-token": token },
     body: JSON.stringify({ rev, blob: JSON.stringify(payload) }),
@@ -68,12 +71,12 @@ async function put(doc, rev, key, token, salt) {
  * Merge this device's document with the shared one and store the result.
  * Returns the merged document so the caller can render it.
  */
-export async function syncOnce(localDoc, { key, token, salt, rev }) {
+export async function syncOnce(localDoc, { key, token, salt, rev, endpoint = ENDPOINT }) {
   let known = rev;
   let merged = localDoc;
 
   for (let attempt = 0; attempt < RETRIES; attempt++) {
-    const remote = await pull(key);
+    const remote = await pull(key, endpoint);
     known = remote.rev;
     merged = remote.doc ? mergeShared(remote.doc, localDoc) : localDoc;
 
@@ -87,7 +90,7 @@ export async function syncOnce(localDoc, { key, token, salt, rev }) {
       return { doc: merged, rev: known, pushed: false, unchanged: true };
     }
 
-    const result = await put(merged, known, key, token, salt);
+    const result = await put(merged, known, key, token, salt, endpoint);
     if (result.ok) return { doc: merged, rev: result.ok.rev, pushed: true };
 
     /* Someone wrote between our read and our write. Go round again. */

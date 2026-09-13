@@ -60,7 +60,17 @@ export function toShared({ tasks, sent, supplies, drops, tombstones = {}, stamps
   return doc;
 }
 
-const newer = (a, b) => ((b?.updatedAt || 0) > (a?.updatedAt || 0) ? b : a);
+/* Whichever side actually has the entry, and the newer one when both do.
+   Written out rather than as one expression because the short form returned
+   `a` when neither side had a timestamp, which is `undefined` when only `b`
+   holds the entry: the merged map then carried keys pointing at nothing and
+   reading it back threw. Serialising hid it, since JSON drops undefined, so
+   it only surfaced when a merge result was read in memory. */
+const newer = (a, b) => {
+  if (!a) return b;
+  if (!b) return a;
+  return (b.updatedAt || 0) > (a.updatedAt || 0) ? b : a;
+};
 
 function mergeMap(a = {}, b = {}) {
   const out = { ...a };
@@ -98,6 +108,7 @@ export function fromShared(doc, seedTasks) {
 
   const user = [];
   for (const [id, e] of Object.entries(entries)) {
+    if (!e) continue;
     if (e.deleted) {
       tombstones[id] = e.updatedAt;
       continue;

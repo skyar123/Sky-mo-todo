@@ -96,6 +96,8 @@ try {
   await run("node", ["tests/handoff.mjs"], { env: { ...childEnv, BASE } });
   console.log("\n— the weekly document into the board —");
   await run("node", ["tests/paste.mjs"], { env: { ...childEnv, BASE } });
+  console.log("\n— the sweep writing to the board —");
+  await run("node", ["tests/import.mjs"], { env: { ...childEnv, BASE } });
   console.log("\n— sharing —");
   await run("node", ["tests/sharing.mjs"], { env: { ...childEnv, BASE } });
 } catch (err) {
