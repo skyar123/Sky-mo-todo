@@ -14,7 +14,7 @@ import { useBoard } from "./lib/board.js";
 import { useSwipe } from "./lib/swipe.js";
 import { copyText } from "./lib/clipboard.js";
 import { available as storageAvailable } from "./lib/storage.js";
-import { readWho, writeWho, laneLabels, PEOPLE, readSeenAt, writeSeenAt, changesFromOther, nameOf } from "./lib/identity.js";
+import { readWho, writeWho, laneLabels, PEOPLE, readSeenAt, writeSeenAt, changesFromOther, nameOf, sourceOf } from "./lib/identity.js";
 import { resolveToday, addDays, iso, dueInfo } from "./lib/dates.js";
 import { liveAgendaFor, visitsToText, upcomingTextDays } from "./lib/schedule.js";
 import { useCalendar } from "./lib/useCalendar.js";
@@ -391,7 +391,7 @@ export default function App({ caseload, onLock, crypto }) {
             supplies={board.supplies}
             changedFamilies={changedFamilies}
             theirChanges={theirChanges}
-            theirName={nameOf(who === "sky" ? "mo" : "sky")}
+            theirName={sourceOf(theirChanges, who) || nameOf(who === "sky" ? "mo" : "sky")}
             agendaCount={agendaCount}
             isTeamingBlock={isTeamingBlock}
             teamingBlock={teamingBlock}

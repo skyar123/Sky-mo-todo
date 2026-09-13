@@ -110,3 +110,17 @@ She met me at the door and wanted to show me the new drawing straight away.
 The caregiver tracked her closely throughout, which is new and worth noticing.
 `);
 check(body.length === 0, "narrative outside the follow-up headings stays out of the board");
+
+/* --- who a change came from -------------------------------------------- */
+
+const { sourceOf } = await import("../src/lib/identity.js");
+
+check(
+  sourceOf([{ by: "sweep" }, { by: "sweep" }], "sky") === "the weekly sweep",
+  "a banner over the sweep's items names the sweep, not the other person"
+);
+check(sourceOf([{ by: "mo" }], "sky") === "Mo", "and still names the other person when it was them");
+check(
+  sourceOf([{ by: "mo" }, { by: "sweep" }], "sky") === "Mo and the weekly sweep",
+  "and names both when it was both"
+);

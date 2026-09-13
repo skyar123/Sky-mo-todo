@@ -36,7 +36,24 @@ const SEEN = "seen-at";
 export const readSeenAt = () => Number(readJSON(SEEN)) || 0;
 export const writeSeenAt = (at) => writeJSON(SEEN, at);
 
-export const nameOf = (who) => (who === "mo" ? "Mo" : who === "sky" ? "Skylar" : "someone");
+/* The weekly sweep writes to the board too, and it is neither of them. A
+   banner reading "66 changes from Mo" the Monday after a sweep would be a
+   lie, and a banner that lies is worse than no banner. */
+export const SWEEP = "sweep";
+
+export const nameOf = (who) =>
+  who === "mo" ? "Mo" : who === "sky" ? "Skylar" : who === SWEEP ? "the weekly sweep" : "someone";
+
+/** Who actually made a set of changes, named for the banner. */
+export function sourceOf(changes, me) {
+  const by = new Set(changes.map((t) => t.by));
+  if (!by.size) return "";
+  if (by.size === 1) return nameOf([...by][0]);
+  const person = me === "sky" ? "mo" : "sky";
+  return by.has(SWEEP) && by.has(person)
+    ? `${nameOf(person)} and the weekly sweep`
+    : "the board";
+}
 
 /** Open tasks the other person changed since this device last looked. */
 export function changesFromOther(tasks, me, seenAt) {
