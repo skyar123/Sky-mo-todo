@@ -73,6 +73,13 @@ if (fx.reminderDay) {
     "reminder nudge targets the next visit day"
   );
 }
+/* Times with nothing behind them look exactly like times from a calendar, and
+   on a two-phone board that is how one of them ends up at the wrong door. */
+check(
+  day.includes("not reading a calendar"),
+  "a phone with no calendar says so rather than passing standing times off as real",
+  "standing times were shown with no sign that this phone has no calendar"
+);
 
 /* --- family detail --- */
 const fam0 = fx.withChild;

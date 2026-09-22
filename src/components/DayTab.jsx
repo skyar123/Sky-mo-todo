@@ -44,7 +44,7 @@ function BlockRow({ item, teaming, agendaCount, onOpenTeaming }) {
   );
 }
 
-export function DayTab({ caseload, today, counts, supplies, soon, openCount, unsent, reminderDay, familyById, changedFamilies, theirChanges, theirName, agendaCount, isTeamingBlock, teamingBlock, live, liveAsOf, onCatchUp, onOpenTeaming, onFlash, onOpenFamily, onGoTexts }) {
+export function DayTab({ caseload, today, counts, supplies, soon, openCount, unsent, reminderDay, familyById, changedFamilies, theirChanges, theirName, agendaCount, isTeamingBlock, teamingBlock, live, liveAsOf, calendarName, onCatchUp, onOpenTeaming, onFlash, onOpenFamily, onGoTexts }) {
   const { families, blocks } = caseload;
   const standing = agendaFor(families, blocks, today);
 
@@ -79,12 +79,26 @@ export function DayTab({ caseload, today, counts, supplies, soon, openCount, uns
       <div style={S.h1}>{LONG[today.getDay()]}</div>
       <div style={S.sub}>
         {fmtDay(today)} · {openCount} open
-        {usingLive && liveAsOf ? ` · from your calendar, ${asOf(liveAsOf)}` : " · swipe to change tabs"}
+        {usingLive && liveAsOf
+          ? ` · from ${calendarName || "your calendar"}, ${asOf(liveAsOf)}`
+          : calendarName
+            ? " · swipe to change tabs"
+            : " · standing times"}
       </div>
 
+      {/* Each phone signs into its own Google account, so the two of them can
+          be reading different calendars, or one of them none at all, and the
+          screens look identical. Saying which one this is answers it. */}
       {liveButEmpty && (
         <div style={{ ...S.tip, marginTop: -6, marginBottom: 12 }}>
-          Nothing on your calendar today. Showing the standing slots instead.
+          Nothing on {calendarName || "your calendar"} today. Showing the standing slots instead.
+        </div>
+      )}
+
+      {!calendarName && (
+        <div style={{ ...S.tip, marginTop: -6, marginBottom: 12 }}>
+          This phone is not reading a calendar, so these are the standing times.
+          Connect one under Sharing and backup to see the real ones.
         </div>
       )}
 

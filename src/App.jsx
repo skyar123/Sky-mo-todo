@@ -33,6 +33,7 @@ const SYNC = {
   retrying: { mark: "↻", color: "#B9AECE", label: "Trying again in a moment" },
   offline:  { mark: "○", color: "#B9AECE", label: "Offline. Your work is saved on this phone and will sync when you are back" },
   error:    { mark: "!", color: HOT,       label: "Cannot reach the shared board. Your work is saved on this phone. Tap to try again" },
+  holding:  { mark: "!", color: HOT,       label: "Waiting to know whose phone this is before sending anything" },
   off:      { mark: "·", color: "#B9AECE", label: "Not shared" },
 };
 
@@ -325,8 +326,8 @@ export default function App({ caseload, onLock, crypto }) {
         <div style={{ ...S.nudge, margin: "18px 16px 0", background: "#F4F1F9", borderColor: LINE }} className="noprint">
           <div style={S.nudgeTitle}>Whose phone is this?</div>
           <div style={S.nudgeSub}>
-            This board is shared, so it needs to know which of you is holding it.
-            It only changes what the labels say.
+            Until this is answered, nothing you change here is sent to the other
+            person. It is saved on this phone and goes up the moment you tap.
           </div>
           <div style={{ ...S.rowWrap, marginTop: 10, marginBottom: 0 }}>
             {PEOPLE.map(([k, l]) => (
@@ -418,6 +419,7 @@ export default function App({ caseload, onLock, crypto }) {
             teamingBlock={teamingBlock}
             live={liveToday}
             liveAsOf={calendar.fetchedAt}
+            calendarName={calendar.calendar?.summary || null}
             onOpenTeaming={() => { setTeamingOpen(true); setOpenId(null); }}
             onCatchUp={catchUp}
             soon={soon}
@@ -462,6 +464,7 @@ export default function App({ caseload, onLock, crypto }) {
             initialDay={reminderDay}
             events={calendar.events}
             detectFamily={detectFamily}
+            me={who || "sky"}
             onFlash={flash}
           />
         )}

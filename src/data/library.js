@@ -14,19 +14,42 @@ export const ORDER = ["assess", "care", "cpp", "plan", "admin"];
 export const LANES = [["sky", "Me"], ["mo", "Mo"], ["both", "Both"]];
 
 /* Reminder text.
+
    `when` is the spoken date ("Tuesday the 9th"). `coming` says who the family
-   should expect: both of you by default, since that is the usual case. The
-   partner named in the message is read from the family's own clinician field
-   rather than hardcoded, so a family seen with a different clinician gets that
-   clinician's name and not Mo's. */
+   should expect: both of you by default, since that is the usual case.
 
-export const COMING = [["both", "Both of us"], ["sky", "Just me"], ["mo", "Just Mo"]];
+   Everything here is written from the seat of whoever is holding the phone.
+   It used to be written from Skylar's, so on Mo's phone a reminder introduced
+   Mo as Skylar, or referred to Mo in the third person, and that goes out to a
+   caregiver. Pass `me` and it reads correctly from either side.
 
-export function whoIsComing(c, coming = "both") {
-  const partner = c.clinician || "Mo";
-  if (coming === "sky") return { subject: "I", verb: "am", contracted: "I'm" };
-  if (coming === "mo") return { subject: partner, verb: "is", contracted: `${partner} is` };
-  return { subject: `${partner} and I`, verb: "are", contracted: `${partner} and I are` };
+   The partner is read from the family's own clinician field rather than
+   hardcoded, so a family seen with a different clinician gets that clinician's
+   name. */
+
+/** What each of the two is called, for this family. */
+export function personName(role, c) {
+  return role === "mo" ? c?.clinician || "Mo" : "Skylar";
+}
+
+/** The three options, labelled from this phone's point of view.
+    The label names the partner generically; the message itself uses the
+    clinician on the family it is being written for. */
+export function comingOptions(me = "sky") {
+  const other = me === "mo" ? "sky" : "mo";
+  return [
+    ["both", "Both of us"],
+    [me, "Just me"],
+    [other, `Just ${personName(other, null)}`],
+  ];
+}
+
+export function whoIsComing(c, coming = "both", me = "sky") {
+  const other = me === "mo" ? "sky" : "mo";
+  const theirName = personName(other, c);
+  if (coming === me) return { subject: "I", verb: "am", contracted: "I'm" };
+  if (coming === other) return { subject: theirName, verb: "is", contracted: `${theirName} is` };
+  return { subject: `${theirName} and I`, verb: "are", contracted: `${theirName} and I are` };
 }
 
 /* "coming out" is wrong when the family travels to the office. */
@@ -38,26 +61,27 @@ const arrival = (c, s, when) =>
 export const TONES = [
   {
     id: "warm", label: "Warm",
-    build: (c, when, coming) =>
-      `Hi! Friendly reminder that ${arrival(c, whoIsComing(c, coming), when)}. Give this a like or send me a quick reply to confirm. See you then!`,
+    build: (c, when, coming, me) =>
+      `Hi! Friendly reminder that ${arrival(c, whoIsComing(c, coming, me), when)}. Give this a like or send me a quick reply to confirm. See you then!`,
   },
   {
     id: "short", label: "Short",
-    build: (c, when, coming) =>
-      `Reminder: ${arrival(c, whoIsComing(c, coming), when)}. Like this or reply to confirm. Thanks!`,
+    build: (c, when, coming, me) =>
+      `Reminder: ${arrival(c, whoIsComing(c, coming, me), when)}. Like this or reply to confirm. Thanks!`,
   },
   {
     id: "first", label: "First visit",
-    build: (c, when, coming) => {
-      const s = whoIsComing(c, coming);
+    build: (c, when, coming, me) => {
+      const s = whoIsComing(c, coming, me);
       const place = c.place === "office" ? " at the office" : "";
-      return `Hi! This is Skylar with Child First. ${s.contracted} looking forward to meeting you ${when} at ${c.time}${place}. Like this message or reply to confirm and I'll see you then.`;
+      /* Introduce whoever is sending it, not whoever wrote the app. */
+      return `Hi! This is ${personName(me, c)} with Child First. ${s.contracted} looking forward to meeting you ${when} at ${c.time}${place}. Like this message or reply to confirm and I'll see you then.`;
     },
   },
   {
     id: "flex", label: "Offer to move",
-    build: (c, when, coming) =>
-      `Hi! ${arrival(c, whoIsComing(c, coming), when)}. Like this to confirm, or tell me if a different time works better this week. Either is fine.`,
+    build: (c, when, coming, me) =>
+      `Hi! ${arrival(c, whoIsComing(c, coming, me), when)}. Like this to confirm, or tell me if a different time works better this week. Either is fine.`,
   },
 ];
 

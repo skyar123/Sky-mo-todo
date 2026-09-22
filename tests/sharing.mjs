@@ -35,6 +35,57 @@ const browser = await chromium.launch(
   process.env.CHROMIUM ? { executablePath: process.env.CHROMIUM } : {}
 );
 
+const revOf = async () => (await (await fetch(`${BASE}/api/board`)).json()).rev;
+
+/* A phone that has not said whose it is reads the board and writes nothing.
+   The prompt was skippable, and a change that reaches the shared board with
+   nobody's name on it cannot be attributed afterwards: the other person sees
+   "someone" moved their task and there is no way back from that. So the work
+   waits on the device until the question is answered, and then goes up. */
+{
+  const ctx = await browser.newContext({ viewport: { width: 390, height: 900 } });
+  const page = await ctx.newPage();
+  await page.goto(`${BASE}/?date=${fx.todayIso}`, { waitUntil: "domcontentloaded" });
+  await page.waitForSelector("#passcode:not([disabled])", { timeout: 20000 });
+  await page.fill("#passcode", process.env.SKYMO_PASSCODE);
+  await page.click('button[type="submit"]');
+  await page.waitForSelector(`text=${day}`, { timeout: 30000 });
+
+  /* Deliberately leaves "Whose phone is this?" unanswered. */
+  await page.click('button:has-text("Families")');
+  await page.waitForSelector("text=on the caseload");
+  await page.click(`button:has-text("${fam}")`);
+  await page.waitForSelector("text=Open tasks", { timeout: 10000 });
+  await page.locator('main [role="checkbox"]').first().click();
+  await page.waitForTimeout(SETTLE);
+
+  (await revOf()) === 0
+    ? ok("a phone that has not said whose it is writes nothing to the shared board")
+    : bad(`an unidentified phone wrote to the shared board (revision ${await revOf()})`);
+
+  const pick = page
+    .locator("div", { has: page.locator('div:text-is("Whose phone is this?")') })
+    .last()
+    .locator('button:text-is("Skylar")');
+  await pick.first().click();
+  await page.waitForTimeout(SETTLE);
+
+  const after = await revOf();
+  after > 0
+    ? ok(`answering it sends the held work straight up (revision ${after})`)
+    : bad("answering who is holding the phone did not release the held work");
+
+  const board = await (await fetch(`${BASE}/api/board`)).json();
+  /* The document is ciphertext here, so this checks the one thing visible
+     from outside: that something was written at all. Whose name is on it is
+     checked below, where a second device can read it. */
+  board.blob ? ok("the released work is stored encrypted") : bad("nothing was stored");
+  await ctx.close();
+}
+
+/* Back to empty, so the suite below starts where it expects to. */
+await fetch(`${BASE}/api/board`, { method: "DELETE" });
+
 async function openDevice(label, person) {
   const ctx = await browser.newContext({ viewport: { width: 390, height: 900 } });
   const page = await ctx.newPage();
@@ -148,12 +199,67 @@ await refresh(A);
   ? bad("the deleted task came back on A")
   : ok("a delete on one device sticks on the other");
 
+/* Handing a task over. A lane change on its own told the other person nothing:
+   they found something in their lane with no idea who put it there, when, or
+   what they were meant to do with it. */
+{
+  const what = `handover probe ${Date.now().toString().slice(-5)}`;
+  const note = `ring the school first ${Date.now().toString().slice(-4)}`;
+  await openFamily(A);
+  await A.fill('input[aria-label="Add a task to this family"]', what);
+  await A.locator('form button:text-is("Add")').click();
+  await A.waitForSelector(`main button:has-text("${what}")`, { timeout: 10000 });
+
+  /* Open it, give it to Mo, and say why. */
+  await A.locator(`main button:has-text("${what}")`).first().click();
+  await A.waitForSelector('main button:text-is("Both")', { timeout: 5000 });
+  await A.locator('main button:text-is("Mo")').first().click();
+  await A.waitForTimeout(300);
+  const noteBox = A.locator('input[aria-label="Note for the person you are passing this to"]');
+  (await noteBox.count())
+    ? ok("passing a task to the other person asks what they need to know")
+    : bad("passing a task offered nowhere to say why");
+  await noteBox.first().fill(note);
+  await A.waitForTimeout(SETTLE);
+
+  await refresh(B);
+  const seen = await B.textContent("main");
+  if (!seen.includes(what)) bad("the handed-over task never reached the other phone");
+  seen.includes("Skylar passed this to you")
+    ? ok("the other phone says who passed it over")
+    : bad("a handed-over task arrived with nobody's name on it");
+  seen.includes(note)
+    ? ok("and carries the line that came with it")
+    : bad("the handover note did not travel");
+}
+
+/* Who marked a reminder sent. Both of them texting the same family the night
+   before a visit is the thing this prevents, and "Sent ✓" with no name on it
+   does not prevent it. */
+if (fx.reminderVisits.length) {
+  await A.click('button:has-text("Texts")');
+  await A.waitForSelector("text=Mark sent", { timeout: 10000 });
+  await A.locator('button:text-is("Mark sent")').first().click();
+  await A.waitForTimeout(SETTLE);
+
+  await B.reload({ waitUntil: "domcontentloaded" });
+  await B.waitForSelector(`text=${day}`, { timeout: 30000 });
+  await B.waitForTimeout(SETTLE);
+  await B.click('button:has-text("Texts")');
+  await B.waitForSelector("text=Mark sent", { timeout: 10000 });
+  (await B.textContent("main")).includes("Skylar sent this")
+    ? ok("a reminder marked sent says which of them sent it")
+    : bad("the other phone cannot tell who sent the reminder");
+  await B.click('button:has-text("Day")');
+  await A.click('button:has-text("Day")');
+  await A.waitForTimeout(SETTLE);
+}
+
 /* An idle board must not write. The catch-up timer pulls every forty-five
    seconds so the other person's ticks arrive; it used to push every time as
    well, re-uploading a document nobody had touched. Left open on two phones
    that is thousands of writes a day against the function's quota, and the
    first thing to break would have been the sync. */
-const revOf = async () => (await (await fetch(`${BASE}/api/board`)).json()).rev;
 const restAt = await revOf();
 /* Both devices are settled and in agreement. Poke each into a catch-up sync
    the way returning to the app does, then see whether anything was written. */

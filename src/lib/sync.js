@@ -70,8 +70,13 @@ async function put(doc, rev, key, token, salt, endpoint = ENDPOINT) {
 /**
  * Merge this device's document with the shared one and store the result.
  * Returns the merged document so the caller can render it.
+ *
+ * `pullOnly` takes the other person's work without sending any of this
+ * device's. It is for the moment before the board knows whose phone it is:
+ * a change that lands on the shared board with nobody's name on it cannot be
+ * un-anonymised later, so it waits here instead.
  */
-export async function syncOnce(localDoc, { key, token, salt, rev, endpoint = ENDPOINT }) {
+export async function syncOnce(localDoc, { key, token, salt, rev, endpoint = ENDPOINT, pullOnly = false }) {
   let known = rev;
   let merged = localDoc;
 
@@ -79,6 +84,8 @@ export async function syncOnce(localDoc, { key, token, salt, rev, endpoint = END
     const remote = await pull(key, endpoint);
     known = remote.rev;
     merged = remote.doc ? mergeShared(remote.doc, localDoc) : localDoc;
+
+    if (pullOnly) return { doc: merged, rev: known, pushed: false, held: true };
 
     /* Nothing of ours to add and the remote is readable: just take theirs.
        This used to say so and then write anyway, which turned the periodic
