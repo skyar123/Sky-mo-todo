@@ -27,6 +27,9 @@ export const S = {
   h1: { fontSize: 26, fontWeight: 800, letterSpacing: -0.6, lineHeight: 1.1 },
   h2: { fontSize: 12.5, fontWeight: 700, opacity: 0.5, margin: "26px 0 8px", textTransform: "none" },
   sub: { fontSize: 13, opacity: 0.6, marginTop: 4, marginBottom: 16, lineHeight: 1.5 },
+  /* The date over a day's visits further down the week. Quieter than a
+     section heading, because the section is the week and these are its days. */
+  dayLabel: { fontSize: 11.5, fontWeight: 700, opacity: 0.4, margin: "14px 0 2px" },
 
   visit: { display: "flex", alignItems: "center", gap: 10, width: "100%", minHeight: 48, padding: "13px 2px", background: "transparent", border: "none", borderBottom: `1px solid ${LINE}`, fontFamily: F, color: INK, cursor: "pointer", textAlign: "left" },
   visitTime: { fontSize: 13, fontWeight: 700, width: 44, opacity: 0.75, flexShrink: 0 },

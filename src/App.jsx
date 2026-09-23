@@ -420,6 +420,8 @@ export default function App({ caseload, onLock, crypto }) {
             live={liveToday}
             liveAsOf={calendar.fetchedAt}
             calendarName={calendar.calendar?.summary || null}
+            events={calendar.events}
+            detectFamily={detectFamily}
             onOpenTeaming={() => { setTeamingOpen(true); setOpenId(null); }}
             onCatchUp={catchUp}
             soon={soon}

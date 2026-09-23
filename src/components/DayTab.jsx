@@ -2,8 +2,8 @@ import React from "react";
 import { S } from "../styles.js";
 import { VisitRow } from "./bits.jsx";
 import { pillStyle } from "./Task.jsx";
-import { LONG, fmtDay, dueInfo, spokenDate } from "../lib/dates.js";
-import { agendaFor, nextVisitDay } from "../lib/schedule.js";
+import { LONG, fmtDay, dueInfo, spokenDate, addDays } from "../lib/dates.js";
+import { agendaFor, liveAgendaFor } from "../lib/schedule.js";
 import { buildICS, downloadICS, icsFilename } from "../lib/ics.js";
 import { handoffMessage } from "../lib/handoff.js";
 
@@ -44,7 +44,12 @@ function BlockRow({ item, teaming, agendaCount, onOpenTeaming }) {
   );
 }
 
-export function DayTab({ caseload, today, counts, supplies, soon, openCount, unsent, reminderDay, familyById, changedFamilies, theirChanges, theirName, agendaCount, isTeamingBlock, teamingBlock, live, liveAsOf, calendarName, onCatchUp, onOpenTeaming, onFlash, onOpenFamily, onGoTexts }) {
+/* How far past tomorrow the day view looks. A rolling week rather than
+   "until Sunday": on a Friday the latter shows almost nothing, and Friday is
+   exactly when you want to see what is coming. */
+const AHEAD = 5;
+
+export function DayTab({ caseload, today, counts, supplies, soon, openCount, unsent, reminderDay, familyById, changedFamilies, theirChanges, theirName, agendaCount, isTeamingBlock, teamingBlock, live, liveAsOf, calendarName, events, detectFamily, onCatchUp, onOpenTeaming, onFlash, onOpenFamily, onGoTexts }) {
   const { families, blocks } = caseload;
   const standing = agendaFor(families, blocks, today);
 
@@ -55,7 +60,32 @@ export function DayTab({ caseload, today, counts, supplies, soon, openCount, uns
   const usingLive = Array.isArray(live) && live.length > 0;
   const agenda = usingLive ? live : standing;
   const liveButEmpty = Array.isArray(live) && live.length === 0;
-  const ahead = agenda.length ? null : nextVisitDay(families, today);
+
+  /* The calendar is fetched a fortnight ahead, so every day below today can be
+     the real one too rather than the slots someone typed in months ago. */
+  const agendaOn = (date) => {
+    const fromCal = events ? liveAgendaFor(events, date, families, detectFamily) : null;
+    return fromCal && fromCal.length ? fromCal : agendaFor(families, blocks, date);
+  };
+
+  const tomorrow = addDays(today, 1);
+  const tomorrowAgenda = agendaOn(tomorrow);
+
+  /* The rest of the week, days with nothing on them left out. Seeing every
+     family you have coming, in one place, is the thing this screen was
+     missing: the week was only ever reachable by opening each day. */
+  const rest = [];
+  for (let i = 2; i <= AHEAD + 1; i++) {
+    const date = addDays(today, i);
+    const items = agendaOn(date);
+    if (items.length) rest.push({ date, items });
+  }
+  /* Counted over the days actually listed under that heading, tomorrow's
+     excluded: a count that includes families the reader cannot see in the
+     list below it is just a number that does not add up. */
+  const familiesAhead = new Set(
+    rest.flatMap((d) => d.items).filter((i) => i.kind === "visit").map((i) => i.c.id)
+  );
 
   /* Due dates are only useful if they reach you when you are not looking at
      this screen, so they go into the calendar that already nags you. */
@@ -67,12 +97,38 @@ export function DayTab({ caseload, today, counts, supplies, soon, openCount, uns
     }
     onFlash?.(handoffMessage(downloadICS(ics, icsFilename("due-this-week", today))));
   }
-  const aheadAgenda = ahead ? agendaFor(families, blocks, ahead) : [];
 
   /* Things worth raising at teaming occur to you on a Monday, not at nine on
      Thursday morning. The block itself is only on the day it falls, so when it
      is not on screen the agenda still needs a door. */
-  const teamingShown = [...agenda, ...aheadAgenda].some((i) => isTeamingBlock(i));
+  const teamingShown = [agenda, tomorrowAgenda, ...rest.map((d) => d.items)]
+    .flat()
+    .some((i) => isTeamingBlock(i));
+
+  /* One row, wherever it falls in the week. */
+  const rowsFor = (items, keyPrefix) =>
+    items.map((item, i) =>
+      item.kind === "visit" ? (
+        <VisitRow
+          key={`${keyPrefix}${item.c.id}`}
+          c={item.c}
+          count={counts[item.c.id]?.open || 0}
+          overdue={counts[item.c.id]?.overdue || 0}
+          supplies={supplies[item.c.id]}
+          changed={changedFamilies.has(item.c.id)}
+          time={item.time}
+          onClick={() => onOpenFamily(item.c.id)}
+        />
+      ) : (
+        <BlockRow
+          key={`${keyPrefix}b${i}`}
+          item={item}
+          teaming={isTeamingBlock(item)}
+          agendaCount={agendaCount}
+          onOpenTeaming={onOpenTeaming}
+        />
+      )
+    );
 
   return (
     <>
@@ -119,61 +175,34 @@ export function DayTab({ caseload, today, counts, supplies, soon, openCount, uns
         </button>
       )}
 
-      {agenda.map((item, i) =>
-        item.kind === "visit" ? (
-          <VisitRow
-            key={item.c.id}
-            c={item.c}
-            count={counts[item.c.id]?.open || 0}
-            overdue={counts[item.c.id]?.overdue || 0}
-            supplies={supplies[item.c.id]}
-            changed={changedFamilies.has(item.c.id)}
-            time={item.time}
-            onClick={() => onOpenFamily(item.c.id)}
-          />
-        ) : (
-          <BlockRow
-            key={`b${i}`}
-            item={item}
-            teaming={isTeamingBlock(item)}
-            agendaCount={agendaCount}
-            onOpenTeaming={onOpenTeaming}
-          />
-        )
+      <div style={{ ...S.h2, marginTop: 0 }}>Today</div>
+      {rowsFor(agenda, "t")}
+      {agenda.length === 0 && <div style={S.empty}>No visits today.</div>}
+
+      <div style={S.h2}>Tomorrow · {spokenDate(tomorrow)}</div>
+      {rowsFor(tomorrowAgenda, "m")}
+      {tomorrowAgenda.length === 0 && <div style={S.empty}>Nothing booked tomorrow.</div>}
+
+      {unsent.length > 0 && reminderDay && (
+        <button onClick={onGoTexts} style={S.nudge}>
+          <div style={S.nudgeTitle}>Send reminders for {spokenDate(reminderDay)}</div>
+          <div style={S.nudgeSub}>
+            {unsent.map(({ c, time }) => `${c.name} at ${time}`).join(", ")}
+          </div>
+        </button>
       )}
 
-      {agenda.length === 0 && (
-        <>
-          <div style={S.empty}>No visits today.</div>
-          {ahead && (
-            <>
-              <div style={S.h2}>Next up · {spokenDate(ahead)}</div>
-              {aheadAgenda.map((item, i) =>
-                item.kind === "visit" ? (
-                  <VisitRow
-                    key={item.c.id}
-                    c={item.c}
-                    count={counts[item.c.id]?.open || 0}
-                    overdue={counts[item.c.id]?.overdue || 0}
-                    supplies={supplies[item.c.id]}
-                    changed={changedFamilies.has(item.c.id)}
-                    time={item.time}
-                    onClick={() => onOpenFamily(item.c.id)}
-                  />
-                ) : (
-                  <BlockRow
-                    key={`ab${i}`}
-                    item={item}
-                    teaming={isTeamingBlock(item)}
-                    agendaCount={agendaCount}
-                    onOpenTeaming={onOpenTeaming}
-                  />
-                )
-              )}
-            </>
-          )}
-        </>
-      )}
+      <div style={S.h2}>
+        The rest of the week
+        {familiesAhead.size > 0 ? ` · ${familiesAhead.size} ${familiesAhead.size === 1 ? "family" : "families"} ahead` : ""}
+      </div>
+      {rest.map(({ date, items }) => (
+        <div key={date.toISOString()}>
+          <div style={S.dayLabel}>{spokenDate(date)}</div>
+          {rowsFor(items, `${date.getDate()}-`)}
+        </div>
+      ))}
+      {rest.length === 0 && <div style={S.empty}>Nothing else booked in the next few days.</div>}
 
       {teamingBlock && !teamingShown && (
         <button onClick={onOpenTeaming} style={S.nudge} aria-label="Open the teaming agenda">
@@ -182,15 +211,6 @@ export function DayTab({ caseload, today, counts, supplies, soon, openCount, uns
             {agendaCount > 0
               ? `${agendaCount} on the list for ${teamingBlock.label.split(",")[0].toLowerCase()}`
               : "Nothing on the list yet. Add it while you are thinking of it."}
-          </div>
-        </button>
-      )}
-
-      {unsent.length > 0 && reminderDay && (
-        <button onClick={onGoTexts} style={S.nudge}>
-          <div style={S.nudgeTitle}>Send reminders for {spokenDate(reminderDay)}</div>
-          <div style={S.nudgeSub}>
-            {unsent.map(({ c, time }) => `${c.name} at ${time}`).join(", ")}
           </div>
         </button>
       )}
