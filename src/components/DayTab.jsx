@@ -49,7 +49,7 @@ function BlockRow({ item, teaming, agendaCount, onOpenTeaming }) {
    exactly when you want to see what is coming. */
 const AHEAD = 5;
 
-export function DayTab({ caseload, today, counts, supplies, soon, openCount, unsent, reminderDay, familyById, changedFamilies, theirChanges, theirName, agendaCount, isTeamingBlock, teamingBlock, live, liveAsOf, calendarName, events, detectFamily, onCatchUp, onOpenTeaming, onFlash, onOpenFamily, onGoTexts }) {
+export function DayTab({ caseload, today, counts, supplies, soon, openCount, unsent, reminderDay, familyById, changedFamilies, theirChanges, theirName, agendaCount, isTeamingBlock, teamingBlock, live, liveAsOf, calendarName, events, detectFamily, overdue, onOpenOverdue, onCatchUp, onOpenTeaming, onFlash, onOpenFamily, onGoTexts }) {
   const { families, blocks } = caseload;
   const standing = agendaFor(families, blocks, today);
 
@@ -86,6 +86,10 @@ export function DayTab({ caseload, today, counts, supplies, soon, openCount, uns
   const familiesAhead = new Set(
     rest.flatMap((d) => d.items).filter((i) => i.kind === "visit").map((i) => i.c.id)
   );
+
+  const oldestOverdue = overdue?.length
+    ? Math.max(...overdue.map((t) => -(dueInfo(t.due, today)?.days ?? 0)))
+    : 0;
 
   /* Due dates are only useful if they reach you when you are not looking at
      this screen, so they go into the calendar that already nags you. */
@@ -211,6 +215,26 @@ export function DayTab({ caseload, today, counts, supplies, soon, openCount, uns
             {agendaCount > 0
               ? `${agendaCount} on the list for ${teamingBlock.label.split(",")[0].toLowerCase()}`
               : "Nothing on the list yet. Add it while you are thinking of it."}
+          </div>
+        </button>
+      )}
+
+      {/* A date that has been red for a fortnight has stopped being a prompt.
+          Listing them here only made the bottom of this screen unreadable, so
+          they get a door and a screen where each one is one tap. */}
+      {overdue?.length > 0 && (
+        <button
+          onClick={onOpenOverdue}
+          style={{ ...S.nudge, background: "#FDF0F2", borderColor: "#F0CBD2" }}
+        >
+          <div style={S.nudgeTitle}>{overdue.length} past due</div>
+          {/* Deliberately no names here. Two truncated ones tell you less than
+              the age of the oldest, and this screen is for the day: a family
+              with no standing visit does not belong on it, even in a list. */}
+          <div style={S.nudgeSub}>
+            {oldestOverdue
+              ? `The oldest is ${oldestOverdue} days over. Tap to work through them.`
+              : "Tap to work through them."}
           </div>
         </button>
       )}

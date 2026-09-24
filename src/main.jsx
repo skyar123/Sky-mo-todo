@@ -14,7 +14,12 @@ createRoot(document.getElementById("root")).render(
 
 /* Registered after load so a failed service worker never delays first paint.
    Offline matters here: these visits happen in homes with poor signal. */
-if ("serviceWorker" in navigator) {
+/* A copy built to be looked at rather than used: the worker precaches a fixed
+   set of paths and would serve a stale shell from whatever address it is
+   parked at, which is the one thing a preview must not do. */
+const PREVIEW = import.meta.env.VITE_PREVIEW === "1";
+
+if ("serviceWorker" in navigator && !PREVIEW) {
   /* Attached before registering: a worker already in control may hand over
      during registration, and that hand-over is the signal to reload. */
   reloadOnNewWorker();

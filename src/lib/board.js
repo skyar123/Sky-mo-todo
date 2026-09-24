@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { readJSON, writeJSON } from "./storage.js";
 import { daysBetween, parseISO } from "./dates.js";
 import { toShared, fromShared } from "./shared.js";
-import { syncOnce, writeToken } from "./sync.js";
+import { syncOnce, writeToken, NoSharing } from "./sync.js";
 
 const KEY = "board-v3";
 const SCHEMA = 3;
@@ -77,6 +77,8 @@ export function useBoard(caseload, today, crypto, me) {
      pushed while that is unanswered, so these are certainly this person's:
      once they say so, their name goes on them instead of "someone". */
   const unclaimedRef = useRef(new Set());
+  /* Cleared for good once the address answers that it has no sync. */
+  const sharingRef = useRef(true);
   const failuresRef = useRef(0);
   const retryRef = useRef(null);
 
@@ -231,7 +233,7 @@ export function useBoard(caseload, today, crypto, me) {
   stateRef.current = { tasks, sent, supplies, drops, tombstones, stamps };
 
   const runSync = useCallback(async () => {
-    if (!crypto?.key || busyRef.current) return;
+    if (!crypto?.key || busyRef.current || !sharingRef.current) return;
     busyRef.current = true;
     /* Until this device says who is holding it, it reads the shared board but
        does not write to it. A change pushed with nobody's name on it is a
@@ -262,7 +264,16 @@ export function useBoard(caseload, today, crypto, me) {
       setSyncState(holding ? "holding" : "idle");
       setLastSync(Date.now());
       failuresRef.current = 0;
-    } catch {
+    } catch (err) {
+      /* No sync behind this address at all. A copy of the board running
+         somewhere without the function is not broken, it is just not shared,
+         and it should say so once rather than flashing a warning every few
+         seconds over work that is saving perfectly well. */
+      if (err instanceof NoSharing) {
+        sharingRef.current = false;
+        setSyncState("off");
+        return;
+      }
       /* A failed sync never costs local work: everything is already in local
          storage and the next success merges it up. So one blip is not worth
          alarming about. Retry soon, with backoff, and only call it an error
@@ -374,7 +385,10 @@ export function useBoard(caseload, today, crypto, me) {
     ready, tasks, openTasks, sent, supplies, drops,
     setSent: markedSetSent, setDrops: markedSetDrops, toggle, setLaneOf, remove, add, addQuick, update, toggleSupply,
     exportBlob, importBlob,
-    shared: !!crypto?.key,
+    /* Not merely "could be shared" but "is": a copy running somewhere with no
+       sync behind it should not ask whose phone it is, because the answer
+       would never reach anyone. */
+    shared: !!crypto?.key && syncState !== "off",
     syncState,
     lastSync,
     syncNow: useCallback(() => {

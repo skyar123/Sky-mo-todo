@@ -39,6 +39,34 @@ export function nextVisitDay(families, from, maxAhead = 14) {
   return null;
 }
 
+/**
+ * The next date this particular family is seen, from `from` onward.
+ *
+ * The useful answer to "this was due a fortnight ago" is almost never a date
+ * picker: it is the next time you are in that house. The calendar knows where
+ * it has been read, and the standing day covers the rest.
+ */
+export function nextVisitFor(family, from, events, detectFamily, maxAhead = 28) {
+  if (!family) return null;
+
+  if (Array.isArray(events) && typeof detectFamily === "function") {
+    for (let i = 0; i <= maxAhead; i++) {
+      const d = addDays(from, i);
+      const onDay = liveAgendaFor(events, d, [family], detectFamily);
+      /* A day the calendar has nothing at all for is no evidence either way;
+         only a day it has this family on counts. */
+      if (onDay && onDay.some((x) => x.kind === "visit" && x.c.id === family.id)) return d;
+    }
+  }
+
+  if (!isScheduled(family)) return null;
+  for (let i = 0; i <= maxAhead; i++) {
+    const d = addDays(from, i);
+    if (d.getDay() === family.day) return d;
+  }
+  return null;
+}
+
 /** The next few visit days, for the reminder day picker. */
 export function upcomingVisitDays(families, from, count = 4, maxAhead = 21) {
   const out = [];

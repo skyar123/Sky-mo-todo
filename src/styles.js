@@ -23,7 +23,10 @@ export const S = {
   searchWrap: { padding: "0 16px 10px" },
   search: { width: "100%", fontFamily: F, fontSize: 16, padding: "10px 12px", borderRadius: 11, border: `1.5px solid ${LINE}`, background: "#fff", color: INK },
 
-  main: { padding: "18px 16px 0", minHeight: "70vh" },
+  /* The bottom padding keeps the last row clear of the floating add button,
+     which is fixed to that corner and otherwise sits on top of it. On a long
+     list the thing you cannot tap is always the last one. */
+  main: { padding: "18px 16px 96px", minHeight: "70vh" },
   h1: { fontSize: 26, fontWeight: 800, letterSpacing: -0.6, lineHeight: 1.1 },
   h2: { fontSize: 12.5, fontWeight: 700, opacity: 0.5, margin: "26px 0 8px", textTransform: "none" },
   sub: { fontSize: 13, opacity: 0.6, marginTop: 4, marginBottom: 16, lineHeight: 1.5 },

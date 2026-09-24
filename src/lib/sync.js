@@ -41,8 +41,19 @@ export async function writeToken(key) {
   return toB64(digest);
 }
 
+/* Thrown when the address the board syncs against has no sync behind it at
+   all. Not the same as a sync that failed: there is nothing here to retry,
+   and retrying forever puts a red warning on a board that is working fine. */
+export class NoSharing extends Error {
+  constructor(status) {
+    super(`no sharing at this address (${status})`);
+    this.name = "NoSharing";
+  }
+}
+
 export async function pull(key, endpoint = ENDPOINT) {
   const res = await fetch(endpoint, { cache: "no-store" });
+  if (res.status === 404 || res.status === 405) throw new NoSharing(res.status);
   if (!res.ok) throw new Error(`pull ${res.status}`);
   const { rev, blob } = await res.json();
   if (!blob) return { rev: rev || 0, doc: null };

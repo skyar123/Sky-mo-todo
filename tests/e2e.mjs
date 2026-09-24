@@ -62,11 +62,21 @@ check(day.includes(fmtDay(fx.today)), "day tab shows today's date");
 for (const v of fx.todayVisits) {
   check(day.includes(v.name) && day.includes(v.time), `day tab lists a visit at ${v.time}`);
 }
-check(
-  fx.unscheduled.every((f) => !day.includes(f.name)),
-  "families with no standing slot stay off the day view",
-  "an unscheduled family leaked onto the day view"
-);
+/* A family with no standing slot has no visit, so it must never appear as one.
+   Checked against the visit rows rather than the whole screen: a task of
+   theirs falling due this week belongs in the due list, and for one day in
+   every few this assertion used to pass only because no such date had come
+   up yet. */
+{
+  const visiting = await page.locator("main [data-visit]").evaluateAll((els) =>
+    els.map((e) => e.getAttribute("data-visit"))
+  );
+  check(
+    fx.unscheduled.every((f) => !visiting.includes(f.id)),
+    "families with no standing slot never appear as a visit",
+    "an unscheduled family was drawn as a visit on the day view"
+  );
+}
 if (fx.reminderDay) {
   check(
     day.includes(`Send reminders for ${spokenDate(fx.reminderDay)}`),
