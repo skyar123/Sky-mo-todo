@@ -68,7 +68,7 @@ const RETRIES = 4;
    imported under an older version is read again, and what the new reading no
    longer finds is retired, so a parser fix reaches notes already on the board
    instead of only the next week's. */
-const PARSER = 3;
+const PARSER = 4;
 
 if (!NOTES && !loose[0]) {
   console.error("usage: node import-sweep.mjs --notes <dir> [--dry]\n   or: node import-sweep.mjs <doc.txt> [--dry]");

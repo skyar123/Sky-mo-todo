@@ -42,7 +42,7 @@ const heading = (words) => new RegExp(`^(?:${words})${TAIL}`, "i");
 const SECTIONS = [
   { test: heading(String.raw`safety(?:\s+(?:flags?|items?|concerns?|check|(?:and|&)\s+follow[- ]?through))?`),
     lane: "both", kind: "admin", label: "Safety", urgent: true, agenda: true },
-  { test: heading(String.raw`bring to (?:the )?(?:clinical partner|clinician|supervision|mo)|for the clinician|with the clinician|clinical partner`),
+  { test: heading(String.raw`bring to (?:the |my )?(?:clinical partner|clinician|supervision|mo)|(?:for|with) (?:the|my) clinician|(?:my )?clinical partner`),
     lane: "both", kind: "cpp", label: "With the clinician", agenda: true },
   { test: heading(String.raw`logistics`),
     lane: "sky", kind: "care", label: "Logistics" },
@@ -58,7 +58,7 @@ const STOP_SECTION = /^\s*\d+\.\s|^\s*(the visit|clinical lens|at a glance|abece
    paragraph that turns ("none today, but she mentioned") is the case the
    heading exists for. */
 const NEGATIVE = /^\s*(none|nothing|no\b|n\/a|not applicable)/i;
-const TURNS = /\b(but|however|though|although|except|watch|keep an eye|monitor)\b/i;
+const TURNS = /\b(but|however|though|although|except|watch|keep an eye|monitor(?:ing)?)\b/i;
 const isNilAnswer = (s) => NEGATIVE.test(s) && !TURNS.test(s);
 
 /* Sentences, split where one ends and a capital starts the next. */
@@ -75,7 +75,14 @@ const opensWithNo = (s) => {
   const [first, ...rest] = sentences(s);
   return rest.length > 0 && isNilAnswer(first);
 };
-const afterTheNo = (s) => sentences(s).slice(1).join(" ");
+/* Past every "none" it opens with: "None from this visit. No disclosures.
+   Monitoring item only: ..." is titled by what is being monitored. */
+const afterTheNo = (s) => {
+  const all = sentences(s);
+  let i = 0;
+  while (i < all.length - 1 && isNilAnswer(all[i])) i++;
+  return all.slice(i).join(" ");
+};
 
 /* A paragraph under a to-do heading can hold several jobs, one sentence
    each: "Bring the screener, with a paper copy. Confirm whether the pass
@@ -449,7 +456,20 @@ export function extractFromNote(text, { families, today, client: given } = {}) {
 
     if (CHECKBOX.test(line)) {
       const rest = line.replace(CHECKBOX, "").trim();
-      if (rest) push(line, section);
+      /* A box on a heading, on a line of its own, is still the heading. */
+      const opens = rest && sectionFor(rest);
+      if (opens) {
+        section = opens;
+        pending = null;
+        continue;
+      }
+      /* "☐ Bring to my clinical partner: the classroom climate..." sits in a
+         to-do list but says whose it is. It goes where its heading sends it,
+         and the list it sits in carries on after it. */
+      const labelled = rest.match(/^([^:]{3,40}):\s+(\S.*)$/);
+      const to = labelled && sectionFor(labelled[1]);
+      if (to) push(labelled[2], to);
+      else if (rest) push(line, section);
       else pending = section; // bare checkbox; the text is on the next line
       continue;
     }

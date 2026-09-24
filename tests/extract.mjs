@@ -324,6 +324,31 @@ check(
   const turnsB = extractFromSource({ title: "Probe Visit Notes.docx", text: "Safety flags: none today, but mom mentioned a new worry about the neighbour.", families: fams, today }).items;
   check(turnsB.length === 1 && turnsB[0].urgent, "a first sentence that itself turns (\"none today, but...\") is still a red flag");
 
+  /* From the next real week: a to-do row that says whose it is, and a safety
+     box whose "none" is followed by something being monitored. */
+  const MIXED = [
+    "5\\. Follow-Up",
+    "|  |  |",
+    "| :-: | :-: |",
+    "| Before next visit |  |",
+    "| ☐ | Draft the drop-off story and bring a working copy. |",
+    "| ☐ | Bring to my clinical partner: the classroom climate as a pattern to hold, and wonder together about the non-reaction. |",
+    "| ☐ | Check in with the lead teacher about drop-offs on other days. |",
+    "",
+    "|  |",
+    "| :-: |",
+    "| Safety flags: none from this visit. No disclosures, nothing at a reporting threshold. Monitoring item only: adults in visible conflict in front of the children. |",
+  ].join("\n");
+  const m = extractFromSource({ title: "Probe Visit Notes 2026-09-21.docx", text: MIXED, families: fams, today }).items;
+  const toPartner = m.find((i) => /classroom climate/.test(i.text));
+  check(toPartner?.kind === "cpp" && toPartner.agenda && !/^bring to/i.test(toPartner.text), "\"☐ Bring to my clinical partner: ...\" goes to Thursday's list, titled by what to bring");
+  check(m.filter((i) => !i.agenda).length === 2, "and the to-do list carries on around it");
+  const mon = m.find((i) => /monitoring/i.test(i.text));
+  check(mon && !mon.urgent && mon.agenda, "\"none ... Monitoring item only: ...\" is kept as a watch item, not dropped and not red");
+  check(!m.some((i) => /^no disclosures/i.test(i.text)), "and is titled by what is being monitored, past every \"none\"");
+  const boxedHead = extractFromSource({ title: "Probe Visit Notes.docx", text: "☐ Safety flags\nMom disclosed a new worry about the neighbour this week.", families: fams, today }).items;
+  check(boxedHead.length === 1 && boxedHead[0].urgent, "a boxed heading on its own line opens its section");
+
   /* A prep line with a topic for a label names its family after it. */
   const PREP2 = ["11\\. Logistics", "|  |  |", "| :-: | :-: |", "| ☐ | Lead exposure: Rosalind's labs pending; check in Thursday. |", "| ☐ | Screening: ask both Probe and Other about the new form. |"].join("\n");
   const p2 = extractFromSource({ title: "Supervision Prep Week of 2026-09-21.docx", text: PREP2, families: fams, today }).items;
