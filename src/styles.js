@@ -23,10 +23,16 @@ export const S = {
   searchWrap: { padding: "0 16px 10px" },
   search: { width: "100%", fontFamily: F, fontSize: 16, padding: "10px 12px", borderRadius: 11, border: `1.5px solid ${LINE}`, background: "#fff", color: INK },
 
-  main: { padding: "18px 16px 0", minHeight: "70vh" },
+  /* The bottom padding keeps the last row clear of the floating add button,
+     which is fixed to that corner and otherwise sits on top of it. On a long
+     list the thing you cannot tap is always the last one. */
+  main: { padding: "18px 16px 96px", minHeight: "70vh" },
   h1: { fontSize: 26, fontWeight: 800, letterSpacing: -0.6, lineHeight: 1.1 },
   h2: { fontSize: 12.5, fontWeight: 700, opacity: 0.5, margin: "26px 0 8px", textTransform: "none" },
   sub: { fontSize: 13, opacity: 0.6, marginTop: 4, marginBottom: 16, lineHeight: 1.5 },
+  /* The date over a day's visits further down the week. Quieter than a
+     section heading, because the section is the week and these are its days. */
+  dayLabel: { fontSize: 11.5, fontWeight: 700, opacity: 0.4, margin: "14px 0 2px" },
 
   visit: { display: "flex", alignItems: "center", gap: 10, width: "100%", minHeight: 48, padding: "13px 2px", background: "transparent", border: "none", borderBottom: `1px solid ${LINE}`, fontFamily: F, color: INK, cursor: "pointer", textAlign: "left" },
   visitTime: { fontSize: 13, fontWeight: 700, width: 44, opacity: 0.75, flexShrink: 0 },
@@ -64,6 +70,9 @@ export const S = {
   box: { width: 22, height: 22, minWidth: 22, borderRadius: 6, border: "2px solid", background: "transparent", color: "#fff", fontSize: 12, fontWeight: 900, cursor: "pointer", display: "inline-flex", alignItems: "center", justifyContent: "center", padding: 0, marginTop: 1 },
   taskText: { flex: 1, textAlign: "left", background: "transparent", border: "none", fontFamily: F, fontSize: 13.5, lineHeight: 1.45, color: INK, cursor: "pointer", padding: "2px 0" },
   taskBody: { padding: "0 0 12px 32px" },
+  /* A task that arrived from the other person, said on the row itself: in a
+     list of forty, a lane chip is not something anyone reads. */
+  handed: { margin: "0 0 10px 32px", padding: "6px 9px", borderLeft: "3px solid #B9AECE", background: "#F4F1F9", borderRadius: 4, fontSize: 12, lineHeight: 1.45 },
   note: { fontSize: 12.5, opacity: 0.68, lineHeight: 1.5, marginBottom: 9 },
 
   editLabel: { fontSize: 10.5, fontWeight: 700, opacity: 0.45, margin: "8px 0 3px" },

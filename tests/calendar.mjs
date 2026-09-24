@@ -180,9 +180,12 @@ await page.waitForSelector(`text=${day}`);
 await page.waitForTimeout(1200);
 
 const main = await page.textContent("main");
-/from your calendar/.test(main)
-  ? ok("the day says where its times came from")
-  : bad("the day does not say it is using the calendar");
+/* Named, not just "your calendar". Each phone signs into its own Google
+   account, so on a shared board the two of them can be reading different
+   calendars, or one of them none, and the screens look the same. */
+/from Child First-Skylar/.test(main)
+  ? ok("the day names the calendar its times came from")
+  : bad(`the day does not name the calendar it is reading: ${main.slice(0, 120)}`);
 main.includes(LIVE_TIME) && LIVE_TIME !== subject.time
   ? ok(`shows the calendar's time (${LIVE_TIME}), not the one typed into the board (${subject.time})`)
   : bad("did not take the time from the calendar");

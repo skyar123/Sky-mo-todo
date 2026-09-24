@@ -1,17 +1,18 @@
 import React, { useMemo, useState } from "react";
 import { S } from "../styles.js";
-import { TONES, SHARES, SHARE_TAGS, NOTES, RULES, COMING } from "../data/library.js";
+import { TONES, SHARES, SHARE_TAGS, NOTES, RULES, comingOptions } from "../data/library.js";
 import { iso, spokenDate, LONG } from "../lib/dates.js";
 import { visitsToText, upcomingTextDays } from "../lib/schedule.js";
 import { buildReminderICS, downloadICS, icsFilename } from "../lib/ics.js";
 import { handoffMessage } from "../lib/handoff.js";
+import { nameOf } from "../lib/identity.js";
 
 const FIRST_TONE = TONES.find((t) => t.id === "first");
 
 const renderShare = (share, size) =>
   share.links.reduce((out, l, i) => out.split(`[link${i + 1}]`).join(l.url), share[size]);
 
-export function TextsTab({ families, today, sent, setSent, copy, initialDay, events, detectFamily, onFlash }) {
+export function TextsTab({ families, today, sent, setSent, copy, initialDay, events, detectFamily, me, onFlash }) {
   const [mode, setMode] = useState("reminders");
   const [tone, setTone] = useState("warm");
   const [coming, setComing] = useState("both"); // both of you is the usual case
@@ -110,7 +111,7 @@ export function TextsTab({ families, today, sent, setSent, copy, initialDay, eve
 
           <div style={S.fieldLabel}>Who the family should expect</div>
           <div style={{ ...S.rowWrap, marginTop: 6 }}>
-            {COMING.map(([k, l]) => (
+            {comingOptions(me).map(([k, l]) => (
               <button
                 key={k}
                 onClick={() => setComing(k)}
@@ -147,8 +148,13 @@ export function TextsTab({ families, today, sent, setSent, copy, initialDay, eve
             const key = c.id + iso(target);
             /* The time in the message is the one on this row, not the one typed
                into the board, so the two can never drift apart on screen. */
-            const body = (c.first ? FIRST_TONE : T).build({ ...c, time }, spokenDate(target), coming);
-            const done = !!sent[key];
+            const body = (c.first ? FIRST_TONE : T).build({ ...c, time }, spokenDate(target), coming, me);
+            /* Who marked it, when the board knows. Both of them texting the
+               same family the night before is the thing to prevent, and "Sent"
+               with no name on it does not prevent it. */
+            const by = sent[key];
+            const done = !!by;
+            const theirs = done && by !== true && by !== me;
             return (
               <div key={c.id} style={{ ...S.msg, opacity: done ? 0.55 : 1 }}>
                 <div style={S.msgHead}>
@@ -165,11 +171,11 @@ export function TextsTab({ families, today, sent, setSent, copy, initialDay, eve
                 <div style={S.rowWrap}>
                   <button onClick={() => copy(body, `Copied for ${c.name}`)} style={S.mini}>Copy</button>
                   <button
-                    onClick={() => setSent((p) => ({ ...p, [key]: !p[key] }))}
+                    onClick={() => setSent((p) => ({ ...p, [key]: p[key] ? false : me || true }))}
                     style={{ ...S.mini, ...(done ? S.miniOn : {}) }}
                     aria-pressed={done}
                   >
-                    {done ? "Sent ✓" : "Mark sent"}
+                    {done ? (theirs ? `${nameOf(by)} sent this ✓` : "Sent ✓") : "Mark sent"}
                   </button>
                 </div>
               </div>

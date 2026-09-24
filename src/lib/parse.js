@@ -22,11 +22,21 @@ export function inferDue(month, day, today) {
   return iso(candidate);
 }
 
-/** Longest aliases first, so "s.g." wins over a stray "sg" inside a word. */
-export function detectFamily(line, families) {
-  const low = line.toLowerCase();
+/**
+ * Which family a line is about. Longest names first, so "s.g." wins over a
+ * stray "sg" inside a word.
+ *
+ * Some names are only safe in a title. A nickname that is also an ordinary
+ * word ("blue") identifies a note when it heads one, but in the body it is far
+ * more likely to be a blue folder than a family, and one match in the body is
+ * enough to file every item on the page under the wrong child. So a family's
+ * `titleAlias` names are consulted only when the caller says this line is a
+ * title: the first line of a note, or a calendar entry.
+ */
+export function detectFamily(line, families, { titles = false } = {}) {
+  const low = String(line || "").toLowerCase();
   const candidates = families
-    .flatMap((f) => (f.alias || []).map((a) => ({ id: f.id, a: a.toLowerCase() })))
+    .flatMap((f) => [...(f.alias || []), ...(titles ? f.titleAlias || [] : [])].map((a) => ({ id: f.id, a: a.toLowerCase() })))
     .sort((x, y) => y.a.length - x.a.length);
   for (const { id, a } of candidates) {
     if (new RegExp(`(^|[^a-z0-9])${escape(a)}([^a-z0-9]|$)`, "i").test(low)) return id;

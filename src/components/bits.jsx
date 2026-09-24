@@ -30,7 +30,7 @@ export function Field({ label, body }) {
 export function VisitRow({ c, count, overdue, supplies, changed, time, onClick }) {
   const bring = supplies && supplies.length ? supplies.join(", ").toLowerCase() : "";
   return (
-    <button onClick={onClick} style={S.visit}>
+    <button onClick={onClick} style={S.visit} data-visit={c.id}>
       <span style={S.visitTime}>{time || c.time || "—"}</span>
       <span style={{ ...S.dot, background: c.color }} aria-hidden="true" />
       <span style={{ flex: 1 }}>

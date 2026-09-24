@@ -5,6 +5,7 @@ import { DayTab } from "./components/DayTab.jsx";
 import { FamiliesTab } from "./components/FamiliesTab.jsx";
 import { FamilyDetail } from "./components/FamilyDetail.jsx";
 import { LooseTasks } from "./components/LooseTasks.jsx";
+import { Overdue, overdueTasks } from "./components/Overdue.jsx";
 import { WeekTab } from "./components/WeekTab.jsx";
 import { TextsTab } from "./components/TextsTab.jsx";
 import { PrintTab } from "./components/PrintTab.jsx";
@@ -33,6 +34,7 @@ const SYNC = {
   retrying: { mark: "↻", color: "#B9AECE", label: "Trying again in a moment" },
   offline:  { mark: "○", color: "#B9AECE", label: "Offline. Your work is saved on this phone and will sync when you are back" },
   error:    { mark: "!", color: HOT,       label: "Cannot reach the shared board. Your work is saved on this phone. Tap to try again" },
+  holding:  { mark: "!", color: HOT,       label: "Waiting to know whose phone this is before sending anything" },
   off:      { mark: "·", color: "#B9AECE", label: "Not shared" },
 };
 
@@ -58,6 +60,7 @@ export default function App({ caseload, onLock, crypto }) {
   const [addOpen, setAddOpen] = useState(false);
   const [teamingOpen, setTeamingOpen] = useState(false);
   const [looseOpen, setLooseOpen] = useState(false);
+  const [overdueOpen, setOverdueOpen] = useState(false);
   const [backupOpen, setBackupOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [searching, setSearching] = useState(false);
@@ -161,17 +164,22 @@ export default function App({ caseload, onLock, crypto }) {
     setSeenAt(now);
   }, []);
 
+  /* What is coming, not what is already late. The two were one list, so the
+     bottom of the day screen was mostly a fortnight of red that nobody could
+     act on from there. The late ones have their own screen now. */
   const soon = useMemo(
     () =>
       laneTasks
         .filter((t) => {
           const d = dueInfo(t.due, today);
-          return d && d.days <= 7;
+          return d && d.days >= 0 && d.days <= 7;
         })
         .sort((a, b) => a.due.localeCompare(b.due))
         .map((t) => ({ task: t, family: t.client ? byId.get(t.client) : null })),
     [laneTasks, today, byId]
   );
+
+  const overdue = useMemo(() => overdueTasks(laneTasks, today), [laneTasks, today]);
 
   /* Reminders go out the night before. If tomorrow is a Saturday, the next
      day that actually has visits is the useful thing to show. */
@@ -233,7 +241,7 @@ export default function App({ caseload, onLock, crypto }) {
   }, [stepTab]);
 
   const openFamily = openId ? byId.get(openId) : null;
-  const showPrint = tab === "print" && !openFamily && !searching && !teamingOpen && !looseOpen;
+  const showPrint = tab === "print" && !openFamily && !searching && !teamingOpen && !looseOpen && !overdueOpen;
 
   return (
     <div style={S.app} data-hand={hand} {...swipe}>
@@ -311,8 +319,8 @@ export default function App({ caseload, onLock, crypto }) {
               <button
                 key={k}
                 onClick={() => { setTab(k); setOpenId(null); setTeamingOpen(false); setLooseOpen(false); }}
-                style={{ ...S.tab, ...(tab === k && !openFamily && !teamingOpen && !looseOpen ? S.tabOn : {}) }}
-                aria-current={tab === k && !openFamily && !teamingOpen && !looseOpen ? "page" : undefined}
+                style={{ ...S.tab, ...(tab === k && !openFamily && !teamingOpen && !looseOpen && !overdueOpen ? S.tabOn : {}) }}
+                aria-current={tab === k && !openFamily && !teamingOpen && !looseOpen && !overdueOpen ? "page" : undefined}
               >
                 {l}
               </button>
@@ -325,8 +333,8 @@ export default function App({ caseload, onLock, crypto }) {
         <div style={{ ...S.nudge, margin: "18px 16px 0", background: "#F4F1F9", borderColor: LINE }} className="noprint">
           <div style={S.nudgeTitle}>Whose phone is this?</div>
           <div style={S.nudgeSub}>
-            This board is shared, so it needs to know which of you is holding it.
-            It only changes what the labels say.
+            Until this is answered, nothing you change here is sent to the other
+            person. It is saved on this phone and goes up the moment you tap.
           </div>
           <div style={{ ...S.rowWrap, marginTop: 10, marginBottom: 0 }}>
             {PEOPLE.map(([k, l]) => (
@@ -357,7 +365,22 @@ export default function App({ caseload, onLock, crypto }) {
           <div style={S.empty}>Type at least two letters.</div>
         )}
 
-        {!searching && looseOpen && (
+        {!searching && overdueOpen && (
+          <Overdue
+            tasks={board.tasks}
+            familyById={byId}
+            today={today}
+            board={boardWithUndo}
+            events={calendar.events}
+            detectFamily={detectFamily}
+            onOpenFamily={(id) => { setOverdueOpen(false); goFamily(id); }}
+            onOpenLoose={() => { setOverdueOpen(false); setLooseOpen(true); }}
+            onFlash={flash}
+            onBack={() => setOverdueOpen(false)}
+          />
+        )}
+
+        {!searching && !overdueOpen && looseOpen && (
           <LooseTasks
             tasks={board.tasks}
             families={families}
@@ -388,7 +411,7 @@ export default function App({ caseload, onLock, crypto }) {
           </>
         )}
 
-        {!searching && !teamingOpen && !looseOpen && openFamily && (
+        {!searching && !teamingOpen && !looseOpen && !overdueOpen && openFamily && (
           <FamilyDetail
             c={openFamily}
             tasks={board.tasks}
@@ -404,7 +427,7 @@ export default function App({ caseload, onLock, crypto }) {
           />
         )}
 
-        {!searching && !teamingOpen && !looseOpen && !openFamily && tab === "day" && (
+        {!searching && !teamingOpen && !looseOpen && !overdueOpen && !openFamily && tab === "day" && (
           <DayTab
             caseload={caseload}
             today={today}
@@ -418,6 +441,11 @@ export default function App({ caseload, onLock, crypto }) {
             teamingBlock={teamingBlock}
             live={liveToday}
             liveAsOf={calendar.fetchedAt}
+            calendarName={calendar.calendar?.summary || null}
+            events={calendar.events}
+            detectFamily={detectFamily}
+            overdue={overdue}
+            onOpenOverdue={() => { setOverdueOpen(true); setOpenId(null); }}
             onOpenTeaming={() => { setTeamingOpen(true); setOpenId(null); }}
             onCatchUp={catchUp}
             soon={soon}
@@ -431,7 +459,7 @@ export default function App({ caseload, onLock, crypto }) {
           />
         )}
 
-        {!searching && !teamingOpen && !looseOpen && !openFamily && tab === "families" && (
+        {!searching && !teamingOpen && !looseOpen && !overdueOpen && !openFamily && tab === "families" && (
           <FamiliesTab
             families={families}
             counts={counts}
@@ -443,7 +471,7 @@ export default function App({ caseload, onLock, crypto }) {
           />
         )}
 
-        {!searching && !teamingOpen && !looseOpen && !openFamily && tab === "week" && (
+        {!searching && !teamingOpen && !looseOpen && !overdueOpen && !openFamily && tab === "week" && (
           <WeekTab
             tasks={board.tasks}
             families={families}
@@ -452,7 +480,7 @@ export default function App({ caseload, onLock, crypto }) {
           />
         )}
 
-        {!searching && !teamingOpen && !looseOpen && !openFamily && tab === "texts" && (
+        {!searching && !teamingOpen && !looseOpen && !overdueOpen && !openFamily && tab === "texts" && (
           <TextsTab
             families={families}
             today={today}
@@ -462,6 +490,7 @@ export default function App({ caseload, onLock, crypto }) {
             initialDay={reminderDay}
             events={calendar.events}
             detectFamily={detectFamily}
+            me={who || "sky"}
             onFlash={flash}
           />
         )}

@@ -10,7 +10,7 @@
    the next step actually needs. */
 import { chromium } from "playwright";
 import { loadFixture } from "./fixture.mjs";
-import { spokenDate, LONG, fmtDay, addDays } from "../src/lib/dates.js";
+import { spokenDate, LONG, fmtDay, addDays, daysBetween } from "../src/lib/dates.js";
 
 const SHOTS = process.env.SHOTS || "tests/shots";
 const BASE = process.env.BASE || "http://localhost:4173";
@@ -62,16 +62,64 @@ check(day.includes(fmtDay(fx.today)), "day tab shows today's date");
 for (const v of fx.todayVisits) {
   check(day.includes(v.name) && day.includes(v.time), `day tab lists a visit at ${v.time}`);
 }
-check(
-  fx.unscheduled.every((f) => !day.includes(f.name)),
-  "families with no standing slot stay off the day view",
-  "an unscheduled family leaked onto the day view"
-);
+/* A family with no standing slot has no visit, so it must never appear as one.
+   Checked against the visit rows rather than the whole screen: a task of
+   theirs falling due this week belongs in the due list, and for one day in
+   every few this assertion used to pass only because no such date had come
+   up yet. */
+{
+  const visiting = await page.locator("main [data-visit]").evaluateAll((els) =>
+    els.map((e) => e.getAttribute("data-visit"))
+  );
+  check(
+    fx.unscheduled.every((f) => !visiting.includes(f.id)),
+    "families with no standing slot never appear as a visit",
+    "an unscheduled family was drawn as a visit on the day view"
+  );
+}
 if (fx.reminderDay) {
   check(
     day.includes(`Send reminders for ${spokenDate(fx.reminderDay)}`),
     "reminder nudge targets the next visit day"
   );
+}
+/* Times with nothing behind them look exactly like times from a calendar, and
+   on a two-phone board that is how one of them ends up at the wrong door. */
+check(
+  day.includes("not reading a calendar"),
+  "a phone with no calendar says so rather than passing standing times off as real",
+  "standing times were shown with no sign that this phone has no calendar"
+);
+
+/* Today, then tomorrow, then the rest of the week, in that order and on one
+   screen. Seeing the week used to mean opening each day in turn, which is not
+   something anyone does between visits. */
+{
+  const at = (s) => day.indexOf(s);
+  check(
+    at("Today") >= 0 && at("Tomorrow") > at("Today") && at("The rest of the week") > at("Tomorrow"),
+    "the day view runs today, then tomorrow, then the rest of the week",
+    `the day view sections are out of order or missing: ${JSON.stringify([at("Today"), at("Tomorrow"), at("The rest of the week")])}`
+  );
+  if (fx.reminderDay && daysBetween(fx.today, fx.reminderDay) === 1) {
+    for (const v of fx.reminderVisits) {
+      check(day.includes(v.name), `tomorrow's visits are on today's screen (${v.time})`);
+    }
+  }
+  for (const { c } of fx.laterThisWeek.slice(0, 4)) {
+    check(day.includes(c.name), "a family later in the week is reachable without changing day");
+  }
+  /* The count beside the heading has to match the list under it, or it is
+     just a number that does not add up. */
+  const claimed = /The rest of the week · (\d+) famil/.exec(day);
+  if (claimed) {
+    const listed = new Set(fx.laterThisWeek.map(({ c }) => c.id)).size;
+    check(
+      Number(claimed[1]) === listed,
+      `the week heading counts the families it actually lists (${listed})`,
+      `the heading claims ${claimed[1]} families but the section lists ${listed}`
+    );
+  }
 }
 
 /* --- family detail --- */

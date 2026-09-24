@@ -20,7 +20,9 @@ import { fileURLToPath } from "node:url";
 import path from "node:path";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const DIST = path.join(root, "dist");
+/* The built output to check. Defaults to dist/, but anything that is about to
+   be put at a public address should be checkable, whatever it is called. */
+const DIST = path.resolve(root, process.argv[2] || "dist");
 const MIN_TOKEN = 4;   // shorter tokens collide with minified identifiers
 const NGRAM = 6;
 

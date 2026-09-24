@@ -124,3 +124,43 @@ check(
   sourceOf([{ by: "mo" }, { by: "sweep" }], "sky") === "Mo and the weekly sweep",
   "and names both when it was both"
 );
+
+/* --- names that are only safe in a title --------------------------------- */
+
+/* A family's filler nickname can be an ordinary word. In the title of a note
+   it names the family; in the body it is almost always just the word, and a
+   single body match is enough to file every item on the page under the wrong
+   child. So those names are consulted for titles and calendar entries only.
+   The families and the nickname here are invented. */
+{
+  const { detectFamily } = await import("../src/lib/parse.js");
+  const named = [
+    { id: "f1", name: "Probe", alias: ["Probe"], titleAlias: ["teal"], child: "Kid", day: 2, time: "1:00" },
+    { id: "f2", name: "Other", alias: ["Other"], child: "Sib", day: 3, time: "2:00" },
+  ];
+  const whose = (text) => extractFromNote(text, { families: named, today: new Date("2026-09-12T12:00:00") }).client;
+
+  check(detectFamily("Teal: Visit Notes", named, { titles: true }) === "f1", "a title-only nickname names the family in a title");
+  check(detectFamily("bring the teal folder", named) === null, "but the same word in ordinary text names nobody");
+  check(
+    whose("Teal: Visit Notes\n\nBefore next visit\n☐\ncall about the appointment\n") === "f1",
+    "a note headed with the nickname is filed under that family"
+  );
+  check(
+    whose("Other: Visit Notes\n\nBefore next visit\n☐\nbring the teal folder next time\n") === "f2",
+    "a note for another family that happens to use the word stays with that family"
+  );
+  /* The title line is asked first and alone. A longer name mentioned in the
+     first item used to outrank the one in the title. */
+  const longer = [
+    { id: "a", name: "Ab", alias: ["ab"], day: 1, time: "1:00" },
+    { id: "b", name: "Longername", alias: ["longername"], day: 2, time: "2:00" },
+  ];
+  check(
+    extractFromNote("Ab: Visit Notes\n\nBefore next visit\n☐\nask longername's mum about the forms\n", {
+      families: longer,
+      today: new Date("2026-09-12T12:00:00"),
+    }).client === "a",
+    "the family in the title wins over a longer name mentioned in the first item"
+  );
+}

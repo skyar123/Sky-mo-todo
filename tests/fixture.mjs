@@ -22,6 +22,14 @@ export async function loadFixture() {
   const reminderDay = nextVisitDay(families, addDays(today, 1));
   const reminderVisits = reminderDay ? visitsOn(families, reminderDay) : [];
 
+  /* Families falling two to six days out, which is what the day view's week
+     section shows. Derived the same way the screen derives it. */
+  const laterThisWeek = [];
+  for (let i = 2; i <= 6; i++) {
+    const d = addDays(today, i);
+    for (const f of visitsOn(families, d)) laterThisWeek.push({ c: f, date: d });
+  }
+
   const withChild = families.find((f) => f.child && /,\s*\d/.test(f.child));
   const firstVisit = families.find((f) => f.first);
   const unscheduled = families.filter((f) => !(f.day >= 1 && f.day <= 6));
@@ -47,6 +55,7 @@ export async function loadFixture() {
     todayVisits,
     reminderDay,
     reminderVisits,
+    laterThisWeek,
     withChild,
     firstVisit,
     unscheduled,

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { readJSON, writeJSON } from "./storage.js";
 import { daysBetween, parseISO } from "./dates.js";
 import { toShared, fromShared } from "./shared.js";
-import { syncOnce, writeToken } from "./sync.js";
+import { syncOnce, writeToken, NoSharing } from "./sync.js";
 
 const KEY = "board-v3";
 const SCHEMA = 3;
@@ -13,10 +13,10 @@ const SENT_KEEP_DAYS = 60;
    alone is read fresh from the caseload on each load. That way updating the
    source file still reaches the board instead of being masked forever by a
    stale saved copy, while a real edit is never quietly reverted. */
-const EDITABLE = ["text", "due", "note", "client", "kind", "agenda"];
+const EDITABLE = ["text", "due", "note", "client", "kind", "agenda", "important", "handBy", "handNote"];
 
 function pickSeedState(task, original) {
-  const state = { done: !!task.done, lane: task.lane, updatedAt: task.updatedAt || 0, by: task.by };
+  const state = { done: !!task.done, lane: task.lane, updatedAt: task.updatedAt || 0, by: task.by, at: task.at };
   if (!original) return state;
   for (const k of EDITABLE) {
     if (task[k] !== original[k]) state[k] = task[k];
@@ -29,7 +29,7 @@ function hydrate(seedTasks, saved) {
   const seeded = seedTasks.map((t) => {
     const s = seedState[t.id];
     if (!s) return t;
-    const merged = { ...t, done: !!s.done, lane: s.lane || t.lane, updatedAt: s.updatedAt || 0, by: s.by };
+    const merged = { ...t, done: !!s.done, lane: s.lane || t.lane, updatedAt: s.updatedAt || 0, by: s.by, at: s.at };
     for (const k of EDITABLE) {
       if (Object.prototype.hasOwnProperty.call(s, k)) merged[k] = s[k];
     }
@@ -73,6 +73,12 @@ export function useBoard(caseload, today, crypto, me) {
   const tokenRef = useRef(null);
   const busyRef = useRef(false);
   const dirtyRef = useRef(false);
+  /* Tasks changed on this device before it knew whose phone it is. Nothing is
+     pushed while that is unanswered, so these are certainly this person's:
+     once they say so, their name goes on them instead of "someone". */
+  const unclaimedRef = useRef(new Set());
+  /* Cleared for good once the address answers that it has no sync. */
+  const sharingRef = useRef(true);
   const failuresRef = useRef(0);
   const retryRef = useRef(null);
 
@@ -116,16 +122,23 @@ export function useBoard(caseload, today, crypto, me) {
     return () => clearTimeout(saveRef.current);
   }, [tasks, sent, supplies, drops, tombstones, stamps, ready, originals]);
 
-  /* Every change is stamped. The merge is newest-wins per entry, so an
-     unstamped edit would lose to whatever the other person did last. */
+  /* Every change to a task goes through here, which is also where each field
+     is stamped with when it changed. Two people on one board touch the same
+     task within seconds of each other all the time: one ticks it while the
+     other is still rewording it. Without a time per field the whole entry is
+     compared, and the tick silently reverts the rewording. */
   const touch = useCallback((id, patch) => {
     dirtyRef.current = true;
+    if (!me) unclaimedRef.current.add(id);
+    const now = Date.now();
     setTasks((p) =>
-      p.map((x) =>
-        x.id === id
-          ? { ...x, ...(typeof patch === "function" ? patch(x) : patch), updatedAt: Date.now(), by: me || "unknown" }
-          : x
-      )
+      p.map((x) => {
+        if (x.id !== id) return x;
+        const fields = typeof patch === "function" ? patch(x) : patch;
+        const at = { ...(x.at || {}) };
+        for (const k of Object.keys(fields)) at[k] = now;
+        return { ...x, ...fields, at, updatedAt: now, by: me || "unknown" };
+      })
     );
   }, [me]);
 
@@ -166,6 +179,7 @@ export function useBoard(caseload, today, crypto, me) {
 
   const add = useCallback((made) => {
     dirtyRef.current = true;
+    if (!me) for (const t of made) unclaimedRef.current.add(t.id);
     const at = Date.now();
     setTasks((p) => [...made.map((t) => ({ ...t, updatedAt: at, by: me || "unknown" })), ...p]);
   }, [me]);
@@ -183,11 +197,23 @@ export function useBoard(caseload, today, crypto, me) {
         lane, kind, text: text.trim(), due, note: "", agenda, important, done: false, seed: false,
       };
       dirtyRef.current = true;
+      if (!me) unclaimedRef.current.add(task.id);
       setTasks((p) => [{ ...task, updatedAt: Date.now(), by: me || "unknown" }, ...p]);
       return task;
     },
     [me]
   );
+
+  /* The moment they answer, the work they did while the board was waiting
+     becomes theirs. The times are left alone: this puts a name on a change,
+     it does not pretend the change happened now. */
+  useEffect(() => {
+    if (!me || !unclaimedRef.current.size) return;
+    const mine = unclaimedRef.current;
+    unclaimedRef.current = new Set();
+    dirtyRef.current = true;
+    setTasks((p) => p.map((t) => (mine.has(t.id) ? { ...t, by: me } : t)));
+  }, [me]);
 
   const toggleSupply = useCallback((famId, item) => {
     mark("supplies", famId);
@@ -207,8 +233,12 @@ export function useBoard(caseload, today, crypto, me) {
   stateRef.current = { tasks, sent, supplies, drops, tombstones, stamps };
 
   const runSync = useCallback(async () => {
-    if (!crypto?.key || busyRef.current) return;
+    if (!crypto?.key || busyRef.current || !sharingRef.current) return;
     busyRef.current = true;
+    /* Until this device says who is holding it, it reads the shared board but
+       does not write to it. A change pushed with nobody's name on it is a
+       change the other person can never place, and the prompt is one tap. */
+    const holding = !me;
     setSyncState("syncing");
     try {
       if (!tokenRef.current) tokenRef.current = await writeToken(crypto.key);
@@ -218,9 +248,11 @@ export function useBoard(caseload, today, crypto, me) {
         token: tokenRef.current,
         salt: crypto.salt,
         rev: revRef.current,
+        pullOnly: holding,
       });
       revRef.current = rev;
-      dirtyRef.current = false;
+      /* Still unsent, so the next sync after they answer carries it up. */
+      if (!holding) dirtyRef.current = false;
 
       const next = fromShared(doc, seedTasks);
       setTasks(next.tasks);
@@ -229,10 +261,19 @@ export function useBoard(caseload, today, crypto, me) {
       setDrops(next.drops);
       setTombstones(next.tombstones);
       setStamps(next.stamps);
-      setSyncState("idle");
+      setSyncState(holding ? "holding" : "idle");
       setLastSync(Date.now());
       failuresRef.current = 0;
-    } catch {
+    } catch (err) {
+      /* No sync behind this address at all. A copy of the board running
+         somewhere without the function is not broken, it is just not shared,
+         and it should say so once rather than flashing a warning every few
+         seconds over work that is saving perfectly well. */
+      if (err instanceof NoSharing) {
+        sharingRef.current = false;
+        setSyncState("off");
+        return;
+      }
       /* A failed sync never costs local work: everything is already in local
          storage and the next success merges it up. So one blip is not worth
          alarming about. Retry soon, with backoff, and only call it an error
@@ -252,7 +293,7 @@ export function useBoard(caseload, today, crypto, me) {
     } finally {
       busyRef.current = false;
     }
-  }, [crypto, originals, seedTasks]);
+  }, [crypto, originals, seedTasks, me]);
 
   /* The retry above reaches the current runSync without making runSync depend
      on itself. */
@@ -344,7 +385,10 @@ export function useBoard(caseload, today, crypto, me) {
     ready, tasks, openTasks, sent, supplies, drops,
     setSent: markedSetSent, setDrops: markedSetDrops, toggle, setLaneOf, remove, add, addQuick, update, toggleSupply,
     exportBlob, importBlob,
-    shared: !!crypto?.key,
+    /* Not merely "could be shared" but "is": a copy running somewhere with no
+       sync behind it should not ask whose phone it is, because the answer
+       would never reach anyone. */
+    shared: !!crypto?.key && syncState !== "off",
     syncState,
     lastSync,
     syncNow: useCallback(() => {

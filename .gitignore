@@ -31,3 +31,6 @@ public/icon-*.png
 # survive into a commit the way one already did.
 _*.mjs
 _*.js
+
+# Preview build output, published to the gh-pages branch rather than tracked.
+dist-preview

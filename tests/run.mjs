@@ -84,6 +84,8 @@ try {
   await waitFor(`http://localhost:${API_PORT}/api/board`, "api stub");
   await waitFor(BASE, "preview server");
   await assertApiProxy();
+  console.log("\n— two people editing one task —");
+  await run("node", ["tests/merge.mjs"], { env: childEnv });
   console.log("\n— the note parser —");
   await run("node", ["tests/extract.mjs"], { env: childEnv });
   console.log("\n— end to end —");
@@ -96,6 +98,8 @@ try {
   await run("node", ["tests/handoff.mjs"], { env: { ...childEnv, BASE } });
   console.log("\n— on a phone —");
   await run("node", ["tests/phone.mjs"], { env: { ...childEnv, BASE } });
+  console.log("\n— working through what is past due —");
+  await run("node", ["tests/overdue.mjs"], { env: { ...childEnv, BASE } });
   console.log("\n— the weekly document into the board —");
   await run("node", ["tests/paste.mjs"], { env: { ...childEnv, BASE } });
   console.log("\n— the sweep writing to the board —");

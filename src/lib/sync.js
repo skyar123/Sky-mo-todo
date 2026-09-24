@@ -41,8 +41,19 @@ export async function writeToken(key) {
   return toB64(digest);
 }
 
+/* Thrown when the address the board syncs against has no sync behind it at
+   all. Not the same as a sync that failed: there is nothing here to retry,
+   and retrying forever puts a red warning on a board that is working fine. */
+export class NoSharing extends Error {
+  constructor(status) {
+    super(`no sharing at this address (${status})`);
+    this.name = "NoSharing";
+  }
+}
+
 export async function pull(key, endpoint = ENDPOINT) {
   const res = await fetch(endpoint, { cache: "no-store" });
+  if (res.status === 404 || res.status === 405) throw new NoSharing(res.status);
   if (!res.ok) throw new Error(`pull ${res.status}`);
   const { rev, blob } = await res.json();
   if (!blob) return { rev: rev || 0, doc: null };
@@ -70,8 +81,13 @@ async function put(doc, rev, key, token, salt, endpoint = ENDPOINT) {
 /**
  * Merge this device's document with the shared one and store the result.
  * Returns the merged document so the caller can render it.
+ *
+ * `pullOnly` takes the other person's work without sending any of this
+ * device's. It is for the moment before the board knows whose phone it is:
+ * a change that lands on the shared board with nobody's name on it cannot be
+ * un-anonymised later, so it waits here instead.
  */
-export async function syncOnce(localDoc, { key, token, salt, rev, endpoint = ENDPOINT }) {
+export async function syncOnce(localDoc, { key, token, salt, rev, endpoint = ENDPOINT, pullOnly = false }) {
   let known = rev;
   let merged = localDoc;
 
@@ -79,6 +95,8 @@ export async function syncOnce(localDoc, { key, token, salt, rev, endpoint = END
     const remote = await pull(key, endpoint);
     known = remote.rev;
     merged = remote.doc ? mergeShared(remote.doc, localDoc) : localDoc;
+
+    if (pullOnly) return { doc: merged, rev: known, pushed: false, held: true };
 
     /* Nothing of ours to add and the remote is readable: just take theirs.
        This used to say so and then write anyway, which turned the periodic

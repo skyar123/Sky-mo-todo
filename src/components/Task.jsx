@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { S, HOT, WARN } from "../styles.js";
 import { KIND, ORDER } from "../data/library.js";
-import { assignLabels } from "../lib/identity.js";
+import { assignLabels, nameOf } from "../lib/identity.js";
 import { dueInfo } from "../lib/dates.js";
 import { buildICS, downloadICS, icsFilename } from "../lib/ics.js";
 import { handoffMessage } from "../lib/handoff.js";
@@ -21,6 +21,21 @@ export function Task({ x, color, today, families, familyById, board, who, onFlas
   const [open, setOpen] = useState(false);
   const d = dueInfo(x.due, today);
   const set = (patch) => board.update(x.id, patch);
+
+  /* Handing a task over used to be a lane change and nothing else, so the
+     person who found it in their lane could not tell whether it had just
+     arrived, who put it there, or what they were meant to do with it.
+     Passing it now carries a name and, if there is one, a line. */
+  const passedToMe = !!x.handBy && !!who && x.handBy !== who && x.lane !== x.handBy;
+  const passedByMe = !!x.handBy && x.handBy === who && x.lane !== who;
+  const takeBack = { handBy: null, handNote: "" };
+
+  function assign(lane) {
+    /* Giving it to myself is taking it, not passing it, so the handover ends
+       there rather than sitting on the task as a stale note. */
+    if (lane === who) set({ lane, ...takeBack });
+    else set({ lane, handBy: who || null });
+  }
 
   function remind() {
     if (!x.due) {
@@ -68,6 +83,13 @@ export function Task({ x, color, today, families, familyById, board, who, onFlas
         )}
         {d && <span style={{ ...S.pill, ...pillStyle(d) }}>{d.label}</span>}
       </div>
+
+      {passedToMe && !x.done && (
+        <div style={S.handed}>
+          {nameOf(x.handBy)} passed this to you
+          {x.handNote ? <span style={{ fontStyle: "italic" }}> — “{x.handNote}”</span> : null}
+        </div>
+      )}
 
       {open && (
         <div style={S.taskBody} className="handed-body">
@@ -136,7 +158,7 @@ export function Task({ x, color, today, families, familyById, board, who, onFlas
             {assignLabels(who).map(([k, l]) => (
               <button
                 key={k}
-                onClick={() => set({ lane: k })}
+                onClick={() => assign(k)}
                 style={{ ...S.mini, ...(x.lane === k ? S.miniOn : {}) }}
                 aria-pressed={x.lane === k}
               >
@@ -144,6 +166,28 @@ export function Task({ x, color, today, families, familyById, board, who, onFlas
               </button>
             ))}
           </div>
+
+          {passedByMe && (
+            <>
+              <div style={S.editLabel}>What they need to know</div>
+              <input
+                value={x.handNote || ""}
+                onChange={(e) => set({ handNote: e.target.value })}
+                style={S.editInput}
+                placeholder="Optional. Anything you would have said out loud"
+                aria-label="Note for the person you are passing this to"
+                data-noswipe
+              />
+            </>
+          )}
+
+          {passedToMe && (
+            <div style={S.rowWrap}>
+              <button onClick={() => set(takeBack)} style={S.mini}>
+                Got it, clear the handover
+              </button>
+            </div>
+          )}
 
           <div style={S.rowWrap}>
             <button
