@@ -285,6 +285,52 @@ check(
   ].join("\n");
   const w = extractFromSource({ title: "Probe Visit Notes.docx", text: WATCH, families: fams, today }).items;
   check(w.length === 1 && !w[0].urgent, "\"watch item, not a flag\" stays on the board but is not marked as a safety flag");
+
+  /* The other table layout, from a real week: the box sits on the heading
+     cell and the answer is beside it. Read row by row, "Before next visit",
+     "Bring to Mo" and "Safety flags" each became a to-do, and every answer
+     landed under the heading before it: the clinician's items on my list,
+     the safety answer among my errands. */
+  const BOXED = [
+    "5\\. Follow-Up",
+    "",
+    "|  |  |",
+    "| :-: | :-: |",
+    "| ☐ Before next visit | Bring the screener, with a paper copy ready in case there is no internet. Confirm whether the free pass covers the whole household and get back to them; they care about this. Supply drop done. |",
+    "| ☐ Bring to Mo | My read on the pretend play, exact phrase included. Ask what the stress measure showed. Align on who steps in if the play escalates. |",
+    "| ☐ Safety flags | None new. The play themes are processing; watch for escalation and route same-day if they appear. |",
+  ].join("\n");
+  const b = extractFromSource({ title: "Probe Visit Notes 2026-09-22.docx", text: BOXED, families: fams, today }).items;
+  check(!b.some((i) => /^(before next visit|bring to mo|safety flags)$/i.test(i.text)), "a boxed heading is a heading, not a to-do");
+  const mineB = b.filter((i) => !i.agenda);
+  const moB = b.filter((i) => i.kind === "cpp");
+  check(mineB.length === 2, `each job in the before-next-visit cell is its own item (${mineB.length})`, `expected 2 jobs, got ${mineB.length}: ${mineB.map((i) => i.text).join(" / ")}`);
+  check(mineB.some((i) => /free pass/.test(i.text)), "the second job is not buried in the first one's note");
+  check(!b.some((i) => /^supply drop done/i.test(i.text)), "a sentence saying something is done is not a job");
+  check(moB.length === 3 && moB.every((i) => i.agenda && i.lane === "both"), `"Bring to Mo" goes to Thursday's list, one item per job (${moB.length})`);
+  const watchB = b.filter((i) => i.section === "Watch item" || i.urgent);
+  check(watchB.length === 1 && !watchB[0].urgent, "a safety answer that opens with \"None new\" is a watch item, not a red flag");
+  check(watchB[0] && !/^none/i.test(watchB[0].text), "and its title is what is being watched, not the \"none\"");
+
+  /* The same, written as lines rather than a table. */
+  const LINES = [
+    "5\\. Follow-Up",
+    "Bring to Mo: align on how the video weeks and play weeks interleave; confirm the date.",
+    "Safety flags: no disclosure this visit requiring protocol. The legal exposure is real but is a referral item.",
+  ].join("\n");
+  const l = extractFromSource({ title: "Probe Visit Notes 2026-09-23.docx", text: LINES, families: fams, today }).items;
+  check(l[0]?.kind === "cpp" && l[0]?.agenda && /^Align on/.test(l[0].text), "\"Bring to Mo: ...\" on one line is a teaming item");
+  check(l.length === 2 && !l[1].urgent, "\"no disclosure this visit ... but\" is not raised as a safety flag");
+  const turnsB = extractFromSource({ title: "Probe Visit Notes.docx", text: "Safety flags: none today, but mom mentioned a new worry about the neighbour.", families: fams, today }).items;
+  check(turnsB.length === 1 && turnsB[0].urgent, "a first sentence that itself turns (\"none today, but...\") is still a red flag");
+
+  /* A prep line with a topic for a label names its family after it. */
+  const PREP2 = ["11\\. Logistics", "|  |  |", "| :-: | :-: |", "| ☐ | Lead exposure: Rosalind's labs pending; check in Thursday. |", "| ☐ | Screening: ask both Probe and Other about the new form. |"].join("\n");
+  const p2 = extractFromSource({ title: "Supervision Prep Week of 2026-09-21.docx", text: PREP2, families: fams, today }).items;
+  check(p2.find((i) => /labs pending/.test(i.text))?.client === "f2", "a prep line naming one family after its label is filed under them");
+  check(p2.find((i) => /new form/.test(i.text))?.client === null, "a line naming two families is left for a person to place");
+  const inVisit = extractFromSource({ title: "Probe Visit Notes.docx", text: PREP2, families: fams, today }).items;
+  check(inVisit.every((i) => i.client === "f1"), "in a family's own note, a mention of another family does not move the item");
 }
 
 /* --- latest visit first -------------------------------------------------- */
@@ -308,6 +354,7 @@ check(
     sw("kept", { noted: "2026-09-14", kept: true }),
     { id: "u123", client: "f1", by: "sky", done: false, noted: "2026-09-01" },
     sw("elsewhere", { client: "f2", noted: "2026-09-01" }),
+    sw("sameweek", { noted: "2026-09-21" }),
   ];
   const latest = latestVisitByFamily(tasks);
   const earlier = (id) => isEarlier(tasks.find((t) => t.id === id || t.id === `sweep_${id}`), latest);
@@ -326,6 +373,9 @@ check(
   check(earlier("kept") === false, "nor one marked as still needed");
   check(earlier("u123") === false, "an item added by hand is never the sweep's to move");
   check(earlier("elsewhere") === false, "a family with no newer note keeps everything current");
+  /* Two notes two days apart are usually two settings (a school observation
+     and a home visit), not one visit replacing another. */
+  check(earlier("sameweek") === false, "a note from two days before the latest stays current");
 }
 
 /* --- headings that are not headings -------------------------------------

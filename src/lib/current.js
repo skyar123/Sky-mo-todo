@@ -13,6 +13,15 @@
    list, into a folded section on the family. Nothing is deleted, and nothing
    anyone has worked on moves. */
 
+/* How far apart two notes have to be before the newer one replaces the older.
+   Visits are weekly; two notes for the same family a day or two apart are
+   nearly always two settings, a school observation and a home visit, each
+   with its own errands, and the home visit says nothing about whether the
+   school ones are done. Four days still lets a visit moved to early the next
+   week replace the one before it. */
+const REPLACES_AFTER_DAYS = 4;
+const daysBetween = (a, b) => (Date.parse(b) - Date.parse(a)) / 86_400_000;
+
 /* A note about one family: its title named them. A supervision prep names no
    family in its title, so it never counts as a family's latest visit, or it
    would push that family's real visit items aside. */
@@ -48,5 +57,5 @@ export function isEarlier(t, latest) {
   if (t.source && t.fromVisit !== true) return false;
   const newest = latest.get(t.client);
   if (!newest) return false;
-  return !t.noted || t.noted < newest;
+  return !t.noted || daysBetween(t.noted, newest) >= REPLACES_AFTER_DAYS;
 }

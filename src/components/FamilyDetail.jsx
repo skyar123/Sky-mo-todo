@@ -16,8 +16,10 @@ export function FamilyDetail({ c, tasks, families, familyById, supplies, drops, 
      shown, and earlier leftovers made every family look like twenty jobs. */
   const latest = latestVisitByFamily(tasks);
   const mine = all.filter((x) => !isSupervision(x) && !isEarlier(x, latest));
-  const earlier = all.filter((x) => !isSupervision(x) && isEarlier(x, latest));
-  const forSupervision = all.filter((x) => isSupervision(x) && !x.done);
+  /* Supervision prompts fold with the rest of their visit: a reflection from
+     three visits ago was for a supervision that has already happened. */
+  const earlier = all.filter((x) => isEarlier(x, latest));
+  const forSupervision = all.filter((x) => isSupervision(x) && !x.done && !isEarlier(x, latest));
   const openCount = mine.filter((x) => !x.done).length;
   const sup = supplies[c.id] || [];
   const lastDrop = drops[c.id] ? parseISO(drops[c.id]) : null;

@@ -42,7 +42,7 @@ const heading = (words) => new RegExp(`^(?:${words})${TAIL}`, "i");
 const SECTIONS = [
   { test: heading(String.raw`safety(?:\s+(?:flags?|items?|concerns?|check|(?:and|&)\s+follow[- ]?through))?`),
     lane: "both", kind: "admin", label: "Safety", urgent: true, agenda: true },
-  { test: heading(String.raw`bring to (?:the )?(?:clinical partner|clinician|supervision)|for the clinician|with the clinician|clinical partner`),
+  { test: heading(String.raw`bring to (?:the )?(?:clinical partner|clinician|supervision|mo)|for the clinician|with the clinician|clinical partner`),
     lane: "both", kind: "cpp", label: "With the clinician", agenda: true },
   { test: heading(String.raw`logistics`),
     lane: "sky", kind: "care", label: "Logistics" },
@@ -60,6 +60,39 @@ const STOP_SECTION = /^\s*\d+\.\s|^\s*(the visit|clinical lens|at a glance|abece
 const NEGATIVE = /^\s*(none|nothing|no\b|n\/a|not applicable)/i;
 const TURNS = /\b(but|however|though|although|except|watch|keep an eye|monitor)\b/i;
 const isNilAnswer = (s) => NEGATIVE.test(s) && !TURNS.test(s);
+
+/* Sentences, split where one ends and a capital starts the next. */
+const sentences = (s) => s.split(/(?<=[.!?])\s+(?=["'(]?[A-Z])/).map((x) => x.trim()).filter(Boolean);
+
+/* "None new. Death content in play is thematic; watch for escalation." The
+   first sentence is the answer to the heading, and it says there is nothing
+   new. What follows is worth keeping on Thursday's list, but it is not a red
+   flag: marking it red because a later sentence says "watch" or "but" put the
+   loudest mark on the board on a paragraph that opened by saying no. A first
+   sentence that itself turns ("None today, but she mentioned...") is still a
+   flag, and anything that does not open with a no is read as written. */
+const opensWithNo = (s) => {
+  const [first, ...rest] = sentences(s);
+  return rest.length > 0 && isNilAnswer(first);
+};
+const afterTheNo = (s) => sentences(s).slice(1).join(" ");
+
+/* A paragraph under a to-do heading can hold several jobs, one sentence
+   each: "Bring the screener, with a paper copy. Confirm whether the pass
+   covers the household." Read as one item, everything after the first
+   sentence disappeared into the item's note, where nobody ticks it. A new
+   item starts at a sentence that opens with something to do; any other
+   sentence stays with the one before it as its reasoning. A checkbox line is
+   one item as its author wrote it, and is never split. */
+const ACTION = /^(?:ask|align|arrange|book|bring|call|check|collect|complete|confirm|contact|coordinate|debrief|draft|drop|email|file|find|follow up|get|give|invite|look|make|offer|order|plan|prep|prepare|print|pull|reach|remind|request|research|return|review|schedule|send|set up|share|submit|talk|tell|text|update|write)\b/i;
+function jobsIn(body) {
+  const groups = [];
+  for (const s of sentences(body)) {
+    if (!groups.length || ACTION.test(s)) groups.push(s);
+    else groups[groups.length - 1] += " " + s;
+  }
+  return groups;
+}
 
 /* A paragraph under the safety heading that says, in its own words, that it
    is not a flag. "None in the memo. Watch item, not a flag: ..." turns, so it
@@ -123,6 +156,19 @@ export function normaliseNoteText(text) {
       if (rest) out.push(`☐ ${rest}`);
       continue;
     }
+    /* The other layout: the box sits on the heading and the answer beside
+       it, "☐ Before next visit | Bring the screener...". Read row by row,
+       the heading came out as a to-do of its own and every answer landed
+       under the heading before it. It goes on as "Heading: answer", which
+       is how the same thing reads when it is written out as a line. */
+    if (cells.length >= 2 && CHECKBOX.test(cells[0])) {
+      const label = cells[0].replace(CHECKBOX, "").trim();
+      const rest = cells.slice(1).filter(Boolean).join(" ");
+      if (label && rest) {
+        out.push(`${label}: ${rest}`);
+        continue;
+      }
+    }
     for (const c of cells) if (c) out.push(...splitRunOn(c));
   }
   return out.join("\n");
@@ -141,11 +187,17 @@ export function simplify(line, { keepLong = false } = {}) {
   if (!keepLong) {
     const cuts = [
       / so that /i, / so the /i, / so I /i, / because /i, / which /i,
-      /, and how /i, /, and what /i, / while the /i, / before offering /i, / \(/,
+      /, and how /i, /, and what /i, / while the /i, / before offering /i, / \(/, / if /i,
+      /* "...materials: cars, a box" and "...from the sibling lane: what I say":
+         past the opening words, a colon starts the detail. Early on it is a
+         label ("Pre-brief with Mo: who holds the play") and stays. */
+      /: /,
     ];
     for (const c of cuts) {
       const m = s.match(c);
-      if (m && m.index > 24) s = s.slice(0, m.index);
+      /* A bracketed aside is never the task, however early it starts. */
+      const from = c.source === " \\(" ? 12 : 24;
+      if (m && m.index > from) s = s.slice(0, m.index);
     }
   }
 
@@ -163,7 +215,7 @@ export function simplify(line, { keepLong = false } = {}) {
   s = s.replace(/[\s,;:.?]+$/, "");
   for (let i = 0; i < 4; i++) {
     const trimmed = s.replace(
-      /[\s,]+(with|and|or|for|to|on|in|at|of|the|a|an|from|by|as|into|about|that|than|when|where|who|how)$/i,
+      /[\s,]+(with|and|or|for|to|on|in|at|of|the|a|an|from|by|as|into|about|that|than|when|where|who|how|if)$/i,
       ""
     );
     if (trimmed === s) break;
@@ -247,8 +299,11 @@ export function extractFromDoc(text, { families, today }) {
  * Skylar chose to call the note; the body mentions other families all the
  * time, and a supervision prep mentions four of them, so scanning the body
  * for a name files items under whichever family happened to be mentioned
- * first. A note whose title names nobody keeps its items unattached, except
- * for lines that open with a family's name as a label.
+ * first. A note whose title names nobody (a supervision prep) is read line by
+ * line instead: a line that opens with a family's name as a label is theirs,
+ * and failing that, a line that names one family anywhere in it is. One line
+ * of a prep is one family's business, and "Lead exposure: [child]'s labs
+ * pending" names its family after the label rather than in it.
  *
  * This is the whole of the extraction. The routine that finds the notes only
  * copies their text; it does not decide what counts as an item, because when
@@ -257,9 +312,15 @@ export function extractFromDoc(text, { families, today }) {
 export function extractFromSource({ title, text, families, today }) {
   const client = detectFamily(String(title || ""), families, { titles: true, fuzzy: true });
   const { items } = extractFromNote(normaliseNoteText(text), { families, today, client });
+  /* Exactly one family, or none: a line naming two is left for a person. */
+  const named = (i) => {
+    if (client) return undefined;
+    const hits = families.filter((f) => detectFamily(i.note || i.text, [f]));
+    return hits.length === 1 ? hits[0].id : undefined;
+  };
   return {
     client,
-    items: items.map((i) => ({ ...i, client: i.client !== undefined ? i.client : client })),
+    items: items.map((i) => ({ ...i, client: i.client !== undefined ? i.client : named(i) ?? client })),
   };
 }
 
@@ -288,12 +349,22 @@ export function extractFromNote(text, { families, today, client: given } = {}) {
   let section = null;
   let pending = null; // a checkbox on its own line, with the text below it
 
-  const push = (raw, sec) => {
+  const push = (raw, sec, { split = false } = {}) => {
     const body = raw.replace(CHECKBOX, "").replace(BULLET, "").trim();
     if (body.length < 8) return;
     if (isNilAnswer(body)) return;
-    const flag = !!sec?.urgent && !NOT_A_FLAG.test(body);
-    const text2 = simplify(body, { keepLong: flag });
+    if (split && sec && !sec.urgent) {
+      const jobs = jobsIn(body);
+      if (jobs.length > 1) {
+        for (const j of jobs) push(j, sec);
+        return;
+      }
+    }
+    const saysNo = !!sec?.urgent && opensWithNo(body);
+    const flag = !!sec?.urgent && !saysNo && !NOT_A_FLAG.test(body);
+    /* The title of a watch item is what is being watched, not the "none"
+       it opened with; the whole paragraph stays in the note. */
+    const text2 = simplify(saysNo ? afterTheNo(body) : body, { keepLong: flag });
     const item = {
       text: text2,
       note: body === text2 ? "" : body,
@@ -363,7 +434,7 @@ export function extractFromNote(text, { families, today, client: given } = {}) {
       if (opens) {
         section = opens;
         pending = null;
-        push(inline[2], section);
+        push(inline[2], section, { split: true });
         continue;
       }
     }
@@ -397,7 +468,7 @@ export function extractFromNote(text, { families, today, client: given } = {}) {
        strong enough signal on its own; the length bar keeps stray fragments
        out. */
     if (section && line.trim().length > 24) {
-      push(line, section);
+      push(line, section, { split: true });
     }
   }
 

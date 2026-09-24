@@ -68,7 +68,7 @@ const RETRIES = 4;
    imported under an older version is read again, and what the new reading no
    longer finds is retired, so a parser fix reaches notes already on the board
    instead of only the next week's. */
-const PARSER = 2;
+const PARSER = 3;
 
 if (!NOTES && !loose[0]) {
   console.error("usage: node import-sweep.mjs --notes <dir> [--dry]\n   or: node import-sweep.mjs <doc.txt> [--dry]");
@@ -204,6 +204,23 @@ const untouched = (e) => e && !e.deleted && e.by === "sweep" && !e.task?.done;
 const READ_FIELDS = ["kind", "lane", "agenda", "urgent", "note", "due", "forum", "source", "noted", "fromVisit"];
 const differs = (a, b) => READ_FIELDS.some((k) => JSON.stringify(a?.[k] ?? null) !== JSON.stringify(b?.[k] ?? null));
 
+/* The same line of a note, read in new words. Titles are the first words of
+   a line, trimmed for a phone, and an item's id comes from its title, so a
+   parser fix or a small edit to the note that changes how a title is trimmed
+   makes a new id for a line already on the board. For an untouched item that
+   is harmless: the old one is retired and the new one takes its place. For
+   one someone has ticked or worked on it is not: the line would come back
+   open, or sit on the board twice. So a new reading whose full wording starts
+   with the title of an item someone worked on is taken to be that item. */
+const norm = (x) => String(x || "").toLowerCase().replace(/\s+/g, " ").trim();
+function sameLine(was, t) {
+  if (!was || (was.client || null) !== (t.client || null)) return false;
+  const old = norm(was.text);
+  if (old.length < 12) return false;
+  const body = norm(t.note || t.text);
+  return body.startsWith(old) || (!!was.note && norm(was.note) === body);
+}
+
 function plan(remote) {
   const mine = { v: 1, tasks: {}, sent: {}, supplies: {}, drops: {} };
   const report = { added: 0, kept: 0, refreshed: 0, retired: 0, adopted: 0, alreadyRead: 0, read: 0 };
@@ -239,10 +256,26 @@ function plan(remote) {
     const lid = s.source ? ledgerId(s.source.id) : null;
     const prior = lid ? tasksOn[lid]?.source : null;
     const now = new Set();
+    /* What the last reading of this note added that someone has since worked
+       on, and that this reading does not produce under the same id. */
+    const ids = new Set(s.tasks.map((t) => t.id));
+    const worked = (prior?.items || [])
+      .filter((id) => !ids.has(id) && tasksOn[id] && !tasksOn[id].deleted && !untouched(tasksOn[id]))
+      .map((id) => ({ id, task: tasksOn[id].task }));
 
     for (const t of s.tasks) {
-      now.add(t.id);
       const existing = mine.tasks[t.id] && !mine.tasks[t.id].deleted ? mine.tasks[t.id] : tasksOn[t.id];
+
+      if (!existing || sweepRetired(existing)) {
+        const same = worked.find((w) => sameLine(w.task, t));
+        if (same) {
+          worked.splice(worked.indexOf(same), 1);
+          now.add(same.id);
+          report.kept++;
+          continue;
+        }
+      }
+      now.add(t.id);
 
       if (existing && !sweepRetired(existing)) {
         /* Already on the board. If nobody has touched it and this reading is

@@ -282,6 +282,36 @@ check(third === after, `and does not even write (revision still ${after})`);
   const b6 = await boardNow();
   const legacyNow = live(b6.doc, `${item(50)}`);
   check(legacyNow.length === 1 && legacyNow[0][1].task.noted === "2026-09-25", "a newer note repeating it gives it that note's date instead of adding a copy");
+
+  /* A line someone has ticked, read again in new words. Item ids come from
+     the title, so a parser fix that trims titles differently (or a small
+     edit to the note) gives the same line a new id. Untouched, the old one
+     is simply replaced; ticked, it must not come back open beside it. */
+  const GROW = `${item(60)} email the school counselor about the meeting.`;
+  const GROWN = `${item(60)} email the school counselor about the meeting and the bus plan.`;
+  const UNTOUCHED = `${item(61)} print the visual schedule for the fridge.`;
+  const UNTOUCHED2 = `${item(61)} print the visual schedule for the fridge and the car.`;
+  await write("e.txt", `driveE${tag} | 2026-09-26T01:00:00Z | ${two.alias[0]} Visit Notes 2026-09-26.docx`, visit([GROW, UNTOUCHED], false));
+  await sweep();
+  const b7 = await boardNow();
+  const growId = live(b7.doc, `${item(60)}`)[0]?.[0];
+  const tick7 = structuredClone(b7.doc);
+  tick7.tasks[growId] = { ...tick7.tasks[growId], task: { ...tick7.tasks[growId].task, done: true }, by: "mo", updatedAt: Date.now() };
+  const put7 = await fetch(`${BASE}/api/board`, {
+    method: "PUT",
+    headers: { "content-type": "application/json", "x-skymo-token": await writeToken(b7.key) },
+    body: JSON.stringify({ rev: b7.rev, blob: JSON.stringify(await encryptWithKey(tick7, b7.key, b7.salt)) }),
+  });
+  check(put7.ok, "(the other person ticks a line)");
+  await write("e.txt", `driveE${tag} | 2026-09-26T02:00:00Z | ${two.alias[0]} Visit Notes 2026-09-26.docx`, visit([GROWN, UNTOUCHED2], false));
+  await sweep();
+  const b8 = await boardNow();
+  const grown = live(b8.doc, `${item(60)}`);
+  check(grown.length === 1 && grown[0][0] === growId && grown[0][1].task.done === true, "a ticked line read again in new words stays ticked, and is not added a second time open");
+  const redone = live(b8.doc, `${item(61)}`);
+  check(redone.length === 1 && has(redone[0][1].task.text, "the car"), "an untouched one is replaced by the new wording");
+  const ledger8 = Object.values(b8.doc.tasks).find((e) => e?.source?.id === `driveE${tag}`);
+  check(ledger8?.source.items.includes(growId), "and the note's record still counts the ticked line as its own");
 }
 
 /* Now the half that matters to a person: is it there when the app opens? */

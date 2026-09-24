@@ -33,10 +33,8 @@ export function TeamingTab({ block, families, familyById, tasks, today, board, o
      clinician before the family's latest visit, and that nobody has touched
      since, was for an earlier meeting; the newer note carries forward what
      still matters. */
-  const items = useMemo(() => {
-    const latest = latestVisitByFamily(tasks);
-    return tasks.filter((t) => t.agenda && !isEarlier(t, latest));
-  }, [tasks]);
+  const latest = useMemo(() => latestVisitByFamily(tasks), [tasks]);
+  const items = useMemo(() => tasks.filter((t) => t.agenda && !isEarlier(t, latest)), [tasks, latest]);
 
   /* What the notes marked for reflective supervision, which is not this
      meeting. [team] lines are for Thursday and are already in the list above;
@@ -44,8 +42,8 @@ export function TeamingTab({ block, families, familyById, tasks, today, board, o
      meeting, or among a family's to-dos, where nobody looks while preparing
      for supervision. They are gathered below Thursday's list, by meeting. */
   const supervision = useMemo(
-    () => tasks.filter((t) => isSupervision(t) && t.forum !== "team" && !t.done),
-    [tasks]
+    () => tasks.filter((t) => isSupervision(t) && t.forum !== "team" && !t.done && !isEarlier(t, latest)),
+    [tasks, latest]
   );
   const forMine = supervision.filter((t) => t.forum !== "group");
   const forGroup = supervision.filter((t) => t.forum === "group");
