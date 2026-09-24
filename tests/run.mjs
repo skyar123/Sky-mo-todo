@@ -45,7 +45,10 @@ const api = spawn("node", ["tests/api-stub.mjs"], {
   env: { ...childEnv, PORT: String(API_PORT) },
 });
 
-const server = spawn("npx", ["vite", "preview", "--port", String(PORT), "--strictPort"], {
+/* Vite itself, not through npx: killing npx left the preview server it had
+   started still holding the port, and the next run then tested against that
+   stale server, with the last run's settings, instead of failing to start. */
+const server = spawn(process.execPath, ["node_modules/vite/bin/vite.js", "preview", "--port", String(PORT), "--strictPort"], {
   stdio: "ignore",
   env: childEnv,
 });
