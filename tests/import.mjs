@@ -10,13 +10,14 @@
    invented. Nothing a client said is in this file. */
 
 import { execFile } from "node:child_process";
-import { writeFile, mkdtemp } from "node:fs/promises";
+import { writeFile, readFile, mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
 import { chromium } from "playwright";
 import { loadFixture } from "./fixture.mjs";
 import { LONG } from "../src/lib/dates.js";
+import { decryptJSON, decryptWithKey, encryptWithKey } from "../src/lib/crypto.js";
 
 const run = promisify(execFile);
 const BASE = process.env.BASE || "http://localhost:4173";
@@ -83,6 +84,59 @@ const second = await run("node", importer, { env });
 check(/Nothing new: all 6 item\(s\) are already on the board/.test(second.stdout), "running it twice adds nothing");
 const third = (await (await fetch(`${BASE}/api/board`)).json()).rev;
 check(third === after, `and does not even write (revision still ${after})`);
+
+/* A note headed by a name the caseload does not know yet. This is what
+   happened with a family's filler nickname and with a child's name spelled
+   differently from the caseload: the items landed with no family. Then the
+   name is added, the next sweep reads the same note again, and there must be
+   exactly one copy of each item afterwards, under the right family. Not the
+   stranded one, not both.
+
+   The name is invented and unique to this run. The caseload used for the
+   second run is written to a temporary file still encrypted, with the same
+   salt, so it opens the same board. */
+{
+  const stranger = `Marigold${tag}`;
+  const strandedText = `${item(9)}a, a clause after it so the line is worth keeping.`;
+  const strandFile = path.join(dir, "stranded.txt");
+  await writeFile(strandFile, `${stranger}: Visit Notes\n\nBefore next visit\n☐\n${strandedText}\n`);
+
+  const firstPass = await run("node", ["scripts/import-sweep.mjs", strandFile, "--site", BASE], { env });
+  check(/could not be matched to a family/.test(firstPass.stdout), "a note under an unknown name is reported as unplaced, not dropped");
+
+  const enc = JSON.parse(await readFile(new URL("../public/caseload.enc.json", import.meta.url), "utf8"));
+  const { key, data } = await decryptJSON(enc, process.env.SKYMO_PASSCODE);
+  const home = picked[0];
+  const taught = {
+    ...data,
+    families: data.families.map((f) => (f.id === home.id ? { ...f, titleAlias: [...(f.titleAlias || []), stranger.toLowerCase()] } : f)),
+  };
+  const taughtFile = path.join(dir, "caseload.enc.json");
+  await writeFile(
+    taughtFile,
+    JSON.stringify({ ...(await encryptWithKey(taught, key, enc.salt)), kdf: enc.kdf, iter: enc.iter })
+  );
+
+  const secondPass = await run(
+    "node",
+    ["scripts/import-sweep.mjs", strandFile, "--site", BASE, "--caseload", taughtFile],
+    { env }
+  );
+  check(/moved to their family/.test(secondPass.stdout), "once the name is known, the next sweep moves the stranded item to its family");
+
+  const { blob } = await (await fetch(`${BASE}/api/board`)).json();
+  const board = await decryptWithKey(JSON.parse(blob), key);
+  const copies = Object.values(board.tasks).filter((e) => e && !e.deleted && e.task && has(e.task.text, `${item(9)}a`));
+  check(copies.length === 1, "and leaves exactly one copy, not the stranded one as well", `found ${copies.length} copies`);
+  check(copies[0]?.task.client === home.id, `and that copy is under ${home.name}`);
+
+  const thirdPass = await run(
+    "node",
+    ["scripts/import-sweep.mjs", strandFile, "--site", BASE, "--caseload", taughtFile],
+    { env }
+  );
+  check(/Nothing new/.test(thirdPass.stdout), "and a further sweep of the same note changes nothing");
+}
 
 /* Now the half that matters to a person: is it there when the app opens? */
 const browser = await chromium.launch(

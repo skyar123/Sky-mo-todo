@@ -149,10 +149,18 @@ export function extractFromDoc(text, { families, today }) {
 export function extractFromNote(text, { families, today }) {
   const lines = String(text || "").split(/\r?\n/);
 
-  /* The family is usually the first thing on the page (the pseudonym, then "Visit Notes"),
-     but fall back to scanning the whole note. */
+  /* The family is usually the first thing on the page (the pseudonym, then
+     "Visit Notes"), so the title line is asked first and alone. It used to be
+     folded into the first six lines, which meant a longer name mentioned in
+     the first item could outrank the one in the title; and the title is the
+     only place a nickname that doubles as an ordinary word can be trusted.
+     Then the opening lines, then the whole note. */
+  const title = lines.find((l) => l.trim()) || "";
   const head = lines.slice(0, 6).join(" ");
-  const client = detectFamily(head, families) || detectFamily(text, families);
+  const client =
+    detectFamily(title, families, { titles: true }) ||
+    detectFamily(head, families) ||
+    detectFamily(text, families);
 
   const items = [];
   let section = null;

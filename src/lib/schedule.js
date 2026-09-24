@@ -96,7 +96,9 @@ export function liveAgendaFor(events, date, families, detectFamily) {
 
   return onDay
     .map((e) => {
-      const id = detectFamily(e.title, families);
+      /* A calendar entry is a title, so nicknames that are only trusted in
+         titles count here too. */
+      const id = detectFamily(e.title, families, { titles: true });
       const family = id ? families.find((f) => f.id === id) : null;
       if (family) return { kind: "visit", time: e.time, c: family, live: true, title: e.title };
       return { kind: "block", time: e.time, label: e.title, live: true, allDay: e.allDay };
