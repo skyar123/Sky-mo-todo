@@ -155,3 +155,39 @@ const userTask = (fields, at) => ({
     ? ok("three edits land the same way whatever order they arrive in")
     : bad("the merge depends on arrival order, so the two phones can disagree");
 }
+
+/* The weekly sweep keeps a record, on the board, of which version of which
+   note it has already read, so that reading a note again can never add a
+   second variant of its items. The record is an entry shaped like a
+   deletion, carrying the note's details, because deletions are the shape
+   every build already passes through a sync untouched. A phone that reads
+   the board and syncs back must neither strip the details nor start
+   writing. (Checked once by hand against the build on the phones today,
+   which behaves the same way; this checks the current one.) */
+{
+  /* Settled the way the importer now writes it: merged with itself. */
+  const raw = {
+    v: 1,
+    tasks: {
+      sweep_a: { seed: false, task: { id: "sweep_a", text: "call the school", client: "f1", lane: "sky", kind: "care", done: false }, updatedAt: T, by: "sweep" },
+      src_abc: { deleted: true, updatedAt: T, by: "sweep", source: { id: "drive1", modified: "2026-09-23T04:13:35Z", parser: 2, items: ["sweep_a"] } },
+    },
+    sent: {}, supplies: {}, drops: {},
+  };
+  const board = mergeShared(raw, raw);
+  /* No seeded tasks here: a real board already carries an entry for every
+     one of them, so they are not what this is about. */
+  const held = fromShared(board, []);
+  const phone = toShared({ ...held, stamps: held.stamps }, new Map());
+  const back = mergeShared(board, phone);
+  back.tasks.src_abc?.source?.id === "drive1"
+    ? ok("a phone syncing over the board keeps the sweep's record of which notes it has read")
+    : bad("a phone sync stripped the sweep's record, so every note would be read again next time");
+  const sorted = (v) => JSON.stringify(v, (k, x) => (x && typeof x === "object" && !Array.isArray(x) ? Object.fromEntries(Object.entries(x).sort()) : x));
+  sorted(back) === sorted(board)
+    ? ok("and an idle phone still sees nothing to write")
+    : bad("the record makes an idle phone write, which is the forty-five-second loop again");
+  !held.tasks.some((t) => t.id === "src_abc")
+    ? ok("and the record never shows up as a task")
+    : bad("the sweep's record is showing on the board as a task");
+}

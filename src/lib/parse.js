@@ -32,8 +32,16 @@ export function inferDue(month, day, today) {
  * enough to file every item on the page under the wrong child. So a family's
  * `titleAlias` names are consulted only when the caller says this line is a
  * title: the first line of a note, or a calendar entry.
+ *
+ * `fuzzy` forgives one letter in a title. A child's name gets spelled more
+ * than one way (one spelling in the caseload, another on the note, a single
+ * letter apart), and that one letter was enough for a whole note's items to
+ * land with no family. It only applies to names of six letters or more, only when nothing
+ * matched exactly, and only when exactly one family is that close: two
+ * families a letter apart means the name is genuinely ambiguous, and a wrong
+ * guess files a child's items under someone else's.
  */
-export function detectFamily(line, families, { titles = false } = {}) {
+export function detectFamily(line, families, { titles = false, fuzzy = false } = {}) {
   const low = String(line || "").toLowerCase();
   const candidates = families
     .flatMap((f) => [...(f.alias || []), ...(titles ? f.titleAlias || [] : [])].map((a) => ({ id: f.id, a: a.toLowerCase() })))
@@ -41,7 +49,32 @@ export function detectFamily(line, families, { titles = false } = {}) {
   for (const { id, a } of candidates) {
     if (new RegExp(`(^|[^a-z0-9])${escape(a)}([^a-z0-9]|$)`, "i").test(low)) return id;
   }
-  return null;
+  if (!fuzzy) return null;
+
+  const words = new Set(low.split(/[^a-z]+/).filter((w) => w.length >= 6));
+  const close = new Set();
+  for (const { id, a } of candidates) {
+    if (a.length < 6 || /[^a-z]/.test(a)) continue;
+    for (const w of words) if (oneEditApart(w, a)) close.add(id);
+  }
+  return close.size === 1 ? [...close][0] : null;
+}
+
+/** True when two words differ by exactly one letter added, dropped or changed. */
+function oneEditApart(a, b) {
+  if (a === b) return false;
+  if (Math.abs(a.length - b.length) > 1) return false;
+  let i = 0;
+  let j = 0;
+  let edits = 0;
+  while (i < a.length && j < b.length) {
+    if (a[i] === b[j]) { i++; j++; continue; }
+    if (++edits > 1) return false;
+    if (a.length > b.length) i++;
+    else if (b.length > a.length) j++;
+    else { i++; j++; }
+  }
+  return edits + (a.length - i) + (b.length - j) === 1;
 }
 
 export function detectKind(line) {

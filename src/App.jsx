@@ -22,6 +22,8 @@ import { resolveToday, addDays, iso, dueInfo } from "./lib/dates.js";
 import { liveAgendaFor, visitsToText, upcomingTextDays } from "./lib/schedule.js";
 import { useCalendar } from "./lib/useCalendar.js";
 import { detectFamily } from "./lib/parse.js";
+import { isSupervision } from "./data/library.js";
+import { latestVisitByFamily, isEarlier } from "./lib/current.js";
 
 const TABS = ["day", "families", "week", "texts", "print"];
 const TAB_LABELS = [["day", "Day"], ["families", "Families"], ["week", "Week"], ["texts", "Texts"], ["print", "Print"]];
@@ -105,7 +107,16 @@ export default function App({ caseload, onLock, crypto }) {
   const boardWithUndo = useMemo(() => ({ ...board, removeWithUndo }), [board, removeWithUndo]);
 
   const inLane = useCallback((t) => lane === "all" || t.lane === lane || t.lane === "both", [lane]);
-  const laneTasks = useMemo(() => board.openTasks.filter(inLane), [board.openTasks, inLane]);
+  /* Supervision prompts are not to-dos, so no count, due list or past-due
+     pile includes them. They live on the teaming screen. */
+  /* An earlier visit's untouched leftovers step back once a newer note for
+     that family is in: no count, due list or past-due pile includes them.
+     They are still on the family, folded under "From earlier visits". */
+  const latest = useMemo(() => latestVisitByFamily(board.tasks), [board.tasks]);
+  const laneTasks = useMemo(
+    () => board.openTasks.filter((t) => !isSupervision(t) && !isEarlier(t, latest)).filter(inLane),
+    [board.openTasks, inLane, latest]
+  );
 
   /* Per-family open and overdue counts, computed once per change. */
   const counts = useMemo(() => {
@@ -143,8 +154,8 @@ export default function App({ caseload, onLock, crypto }) {
   );
 
   const agendaCount = useMemo(
-    () => board.openTasks.filter((t) => t.agenda).length,
-    [board.openTasks]
+    () => board.openTasks.filter((t) => t.agenda && !isEarlier(t, latest)).length,
+    [board.openTasks, latest]
   );
 
   /* What the other person did while this device was not looking. Reads all
@@ -367,7 +378,7 @@ export default function App({ caseload, onLock, crypto }) {
 
         {!searching && overdueOpen && (
           <Overdue
-            tasks={board.tasks}
+            tasks={laneTasks}
             familyById={byId}
             today={today}
             board={boardWithUndo}

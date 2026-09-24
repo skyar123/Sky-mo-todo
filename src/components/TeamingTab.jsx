@@ -3,6 +3,8 @@ import { S, LINE } from "../styles.js";
 import { spokenDate, addDays, dueInfo } from "../lib/dates.js";
 import { nameOf } from "../lib/identity.js";
 import { pillStyle } from "./Task.jsx";
+import { isSupervision } from "../data/library.js";
+import { latestVisitByFamily, isEarlier } from "../lib/current.js";
 
 /** The next time this standing meeting comes round, today included. */
 function nextOccurrence(block, today) {
@@ -27,7 +29,26 @@ export function TeamingTab({ block, families, familyById, tasks, today, board, o
   const when = nextOccurrence(block, today);
   const isToday = when && when.getDay() === today.getDay();
 
-  const items = useMemo(() => tasks.filter((t) => t.agenda), [tasks]);
+  /* Thursday's list is for this Thursday. Something a note marked for the
+     clinician before the family's latest visit, and that nobody has touched
+     since, was for an earlier meeting; the newer note carries forward what
+     still matters. */
+  const items = useMemo(() => {
+    const latest = latestVisitByFamily(tasks);
+    return tasks.filter((t) => t.agenda && !isEarlier(t, latest));
+  }, [tasks]);
+
+  /* What the notes marked for reflective supervision, which is not this
+     meeting. [team] lines are for Thursday and are already in the list above;
+     [individual] and [group] ones used to land either here, in the wrong
+     meeting, or among a family's to-dos, where nobody looks while preparing
+     for supervision. They are gathered below Thursday's list, by meeting. */
+  const supervision = useMemo(
+    () => tasks.filter((t) => isSupervision(t) && t.forum !== "team" && !t.done),
+    [tasks]
+  );
+  const forMine = supervision.filter((t) => t.forum !== "group");
+  const forGroup = supervision.filter((t) => t.forum === "group");
   /* Flagged first inside each family: the meeting is short and the order on
      screen is the order it gets talked about. */
   const open = items
@@ -232,6 +253,32 @@ export function TeamingTab({ block, families, familyById, tasks, today, board, o
           })}
         </div>
       ))}
+
+      {[["For my supervision", forMine], ["For group supervision", forGroup]].map(([title, rows]) =>
+        rows.length > 0 && (
+          <div key={title}>
+            <div style={S.h2}>{title} ({rows.length})</div>
+            {rows.map((t) => {
+              const f = t.client ? familyById.get(t.client) : null;
+              return (
+                <div key={t.id} style={{ ...S.taskTop, borderBottom: `1px solid ${LINE}` }} className="handed">
+                  <button
+                    onClick={() => board.toggle(t.id)}
+                    style={{ ...S.box, borderColor: f ? f.color : "#B9AECE" }}
+                    role="checkbox"
+                    aria-checked={false}
+                    aria-label={`Mark taken to supervision: ${t.text}`}
+                  />
+                  <span style={{ ...S.taskText, cursor: "default", fontSize: 13.5, lineHeight: 1.45 }}>
+                    {f && <span style={{ fontWeight: 700 }}>{f.name} · </span>}
+                    {t.text}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        )
+      )}
 
       {done.length > 0 && (
         <>

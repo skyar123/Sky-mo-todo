@@ -149,7 +149,12 @@ export function Task({ x, color, today, families, familyById, board, who, onFlas
               aria-label="Kind"
               data-noswipe
             >
-              {ORDER.map((k) => <option key={k} value={k}>{KIND[k]}</option>)}
+              {/* A supervision prompt shows its own kind, so the picker does
+                  not silently read as something else; nothing else can be
+                  moved into it. */}
+              {(x.kind === "supervision" ? [...ORDER, "supervision"] : ORDER).map((k) => (
+                <option key={k} value={k}>{KIND[k]}</option>
+              ))}
             </select>
           </div>
 

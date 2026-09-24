@@ -1,6 +1,7 @@
 import React from "react";
 import { S } from "../styles.js";
 import { Task } from "./Task.jsx";
+import { isSupervision } from "../data/library.js";
 
 /* Everything that belongs to the caseload rather than to one family.
    Supervision topics, admin, anything typed into the teaming box before it
@@ -9,7 +10,9 @@ import { Task } from "./Task.jsx";
    the board, findable only by searching for words you no longer remembered.
    This is the screen that was missing. */
 export function LooseTasks({ tasks, families, familyById, today, board, who, onFlash, onBack }) {
-  const mine = tasks.filter((x) => !x.client);
+  /* Supervision prompts with no family are not to-dos either; they are on
+     the teaming screen, under the supervision they are for. */
+  const mine = tasks.filter((x) => !x.client && !isSupervision(x));
   const open = mine.filter((x) => !x.done);
   const done = mine.filter((x) => x.done);
 

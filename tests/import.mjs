@@ -10,7 +10,7 @@
    invented. Nothing a client said is in this file. */
 
 import { execFile } from "node:child_process";
-import { writeFile, readFile, mkdtemp } from "node:fs/promises";
+import { writeFile, readFile, mkdtemp, mkdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
@@ -18,6 +18,7 @@ import { chromium } from "playwright";
 import { loadFixture } from "./fixture.mjs";
 import { LONG } from "../src/lib/dates.js";
 import { decryptJSON, decryptWithKey, encryptWithKey } from "../src/lib/crypto.js";
+import { writeToken } from "../src/lib/sync.js";
 
 const run = promisify(execFile);
 const BASE = process.env.BASE || "http://localhost:4173";
@@ -136,6 +137,151 @@ check(third === after, `and does not even write (revision still ${after})`);
     { env }
   );
   check(/Nothing new/.test(thirdPass.stdout), "and a further sweep of the same note changes nothing");
+}
+
+/* --- the sweep reading notes straight from Drive -------------------------
+
+   The routine now copies each note's text as Drive gives it and lets this
+   script decide what is an item. What has to hold, and what did not hold when
+   the routine did the extracting itself:
+
+   - a note is read once per version, however many runs see it;
+   - a second copy of the same version whose text came out a little
+     differently adds nothing (that variation put forty extra items on the
+     real board in one night);
+   - an edited note replaces what its last version added, except anything a
+     person has ticked or changed.
+
+   The notes are invented, in Drive's export shape. */
+{
+  /* Families of its own. A newer tracked visit note makes a family's older
+     sweep items step back into "From earlier visits", which is right, but it
+     would hide the items the test above checks for on its families. */
+  const [one, two] = fx.families.filter((f) => f.alias?.length && !picked.includes(f)).slice(0, 2);
+  const notes = path.join(dir, "notes");
+  await mkdir(notes, { recursive: true });
+  const visit = (items, supervision = true) => [
+    `${one.alias[0]}: Visit Notes, week of 2026-09-14`,
+    "",
+    "1\\. The Visit",
+    "",
+    "Narrative that belongs in the note and not on the board, long enough to be tempting.",
+    "",
+    "5\\. Follow-Up",
+    "",
+    "|  |  |",
+    "| :-: | :-: |",
+    ...items.map((t) => `| ☐ | ${t} |`),
+    "",
+    "Safety flags: none disclosed in this memo.",
+    "",
+    "6\\. Open Threads and Supervision",
+    "",
+    ...(supervision ? [`ð¥ \\[team\\] ${item(20)} team question for Thursday, long enough to keep.`] : []),
+  ].join("\n");
+  const prep = [
+    "Reflective Supervision Prep: Week of 2026-09-14",
+    "",
+    "11\\. Logistics (capped at 20%)",
+    "",
+    "|  |  |",
+    "| :-: | :-: |",
+    `| ☐ | ${two.alias[0]} mom: ${item(30)} therapist-list follow-up, offer to call together. |`,
+  ].join("\n");
+
+  const A = `${item(21)} confirm the reassessment timing for the speech question.`;
+  const B = `${item(22)} tell Mo about the ending and propose a slower goodbye.`;
+  const B2 = `${item(22)} tell Mo about the ending, and plan the ten-minute landing together.`;
+
+  const write = (name, source, text) => writeFile(path.join(notes, name), `Source: ${source}\n${text}\n`);
+  await write("a.txt", `driveA${tag} | 2026-09-23T04:00:00Z | ${one.alias[0]} Visit Notes 2026-09-23.docx`, visit([A, B]));
+  await write("b.txt", `driveB${tag} | 2026-09-19T21:20:01Z | Supervision Prep Week of 2026-09-14.docx`, prep);
+
+  const sweep = (...extra) => run("node", ["scripts/import-sweep.mjs", "--notes", notes, "--site", BASE, ...extra], { env });
+  const boardNow = async () => {
+    const enc = JSON.parse(await readFile(new URL("../public/caseload.enc.json", import.meta.url), "utf8"));
+    const { key } = await decryptJSON(enc, process.env.SKYMO_PASSCODE);
+    const b = await (await fetch(`${BASE}/api/board`)).json();
+    return { rev: b.rev, key, salt: enc.salt, doc: await decryptWithKey(JSON.parse(b.blob), key) };
+  };
+  const live = (doc, needle) =>
+    Object.entries(doc.tasks).filter(([, e]) => e && !e.deleted && e.task && has(e.task.text, needle));
+
+  const first = await sweep();
+  check(/Added 4 item\(s\)/.test(first.stdout), "two notes read from Drive put their four items on the board", first.stdout.trim());
+  let b0 = await boardNow();
+  check(live(b0.doc, `${item(21)}`)[0]?.[1].task.client === one.id, `the visit note's items are filed under ${one.name}, from its title`);
+  check(live(b0.doc, `${item(30)}`)[0]?.[1].task.client === two.id, `the prep's labelled line is filed under ${two.name}`);
+  const team = live(b0.doc, `${item(20)}`)[0]?.[1].task;
+  check(team?.forum === "team" && team.agenda && team.kind !== "supervision", "the [team] line arrives on the teaming list");
+
+  const again = await sweep();
+  check(/Nothing new: 2 note\(s\) already read/.test(again.stdout), "reading the same notes again adds nothing");
+
+  /* The failure that happened for real: the same version of the note, copied
+     out with slightly different words. */
+  await write("a.txt", `driveA${tag} | 2026-09-23T04:00:00Z | ${one.alias[0]} Visit Notes 2026-09-23.docx`, visit([A, B2]));
+  const variant = await sweep();
+  const b1 = await boardNow();
+  check(/Nothing new/.test(variant.stdout) && b1.rev === b0.rev, "a differently worded copy of the same version adds nothing and writes nothing");
+  check(live(b1.doc, `${item(22)}`).length === 1, "so there is still exactly one copy of each item");
+
+  /* Someone ticks item A on their phone. */
+  const aId = live(b1.doc, `${item(21)}`)[0][0];
+  const ticked = structuredClone(b1.doc);
+  ticked.tasks[aId] = { ...ticked.tasks[aId], task: { ...ticked.tasks[aId].task, done: true }, by: "sky", updatedAt: Date.now() };
+  const put = await fetch(`${BASE}/api/board`, {
+    method: "PUT",
+    headers: { "content-type": "application/json", "x-skymo-token": await writeToken(b1.key) },
+    body: JSON.stringify({ rev: b1.rev, blob: JSON.stringify(await encryptWithKey(ticked, b1.key, b1.salt)) }),
+  });
+  check(put.ok, "(a person ticks one of the note's items)");
+
+  /* Then the note is edited: A is gone from it, B is reworded. */
+  await write("a.txt", `driveA${tag} | 2026-09-24T02:00:00Z | ${one.alias[0]} Visit Notes 2026-09-23.docx`, visit([B2]));
+  const edited = await sweep();
+  const b2 = await boardNow();
+  check(/retired/.test(edited.stdout), "an edited note replaces what its last version added");
+  /* Checked against the full wording: the title is shortened for the phone,
+     and the rest is kept in the item's note. */
+  const reworded = live(b2.doc, `${item(22)}`);
+  const full = (t) => `${t.text} ${t.note || ""}`;
+  check(reworded.length === 1 && has(full(reworded[0][1].task), "landing"), "the reworded item replaces the old wording, not beside it");
+  check(live(b2.doc, `${item(21)}`)[0]?.[1].task.done === true, "but the item someone ticked stays, even though the note no longer has it");
+  check(live(b2.doc, `${item(30)}`).length === 1, "and the other note is untouched");
+
+  /* From review: two notes can ask for the same thing. An edit that drops
+     the line from one must not retire it while the other still has it. */
+  const SHARED = `${item(40)} send mom the resource list we talked about.`;
+  await write("c.txt", `driveC${tag} | 2026-09-22T05:00:00Z | ${one.alias[0]} Visit Notes 2026-09-22.docx`, visit([SHARED], false));
+  await write("a.txt", `driveA${tag} | 2026-09-24T03:00:00Z | ${one.alias[0]} Visit Notes 2026-09-23.docx`, visit([B2, SHARED]));
+  await sweep();
+  const b3 = await boardNow();
+  check(live(b3.doc, `${item(40)}`).length === 1, "a line two notes share is on the board once");
+  check(
+    live(b3.doc, `${item(40)}`)[0]?.[1].task.noted === "2026-09-23",
+    "and belongs to the newer of the two notes, so it is never taken for an earlier visit's leftover"
+  );
+  await write("a.txt", `driveA${tag} | 2026-09-24T04:00:00Z | ${one.alias[0]} Visit Notes 2026-09-23.docx`, visit([B2]));
+  await sweep();
+  const b4 = await boardNow();
+  check(live(b4.doc, `${item(40)}`).length === 1, "dropping it from one note keeps it while the other note still asks for it");
+
+  /* From review: an item imported before notes were tracked has no visit
+     date, which reads as older than every tracked note. When a newer note
+     repeats it word for word, it has to take that note's date, or the
+     current visit's own item gets folded away as a leftover. */
+  const LEGACY = `${item(50)} bring the sticker chart and the timer.`;
+  const legacyFile = path.join(dir, "legacy.txt");
+  await writeFile(legacyFile, `${one.alias[0]}: Visit Notes\n\nBefore next visit\n☐\n${LEGACY}\n`);
+  await run("node", ["scripts/import-sweep.mjs", legacyFile, "--site", BASE], { env });
+  const b5 = await boardNow();
+  check(!live(b5.doc, `${item(50)}`)[0]?.[1].task.noted, "(an item arrives the old way, with no visit date)");
+  await write("d.txt", `driveD${tag} | 2026-09-25T01:00:00Z | ${one.alias[0]} Visit Notes 2026-09-25.docx`, visit([LEGACY], false));
+  await sweep();
+  const b6 = await boardNow();
+  const legacyNow = live(b6.doc, `${item(50)}`);
+  check(legacyNow.length === 1 && legacyNow[0][1].task.noted === "2026-09-25", "a newer note repeating it gives it that note's date instead of adding a copy");
 }
 
 /* Now the half that matters to a person: is it there when the app opens? */
