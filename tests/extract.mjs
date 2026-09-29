@@ -349,6 +349,15 @@ check(
   const boxedHead = extractFromSource({ title: "Probe Visit Notes.docx", text: "☐ Safety flags\nMom disclosed a new worry about the neighbour this week.", families: fams, today }).items;
   check(boxedHead.length === 1 && boxedHead[0].urgent, "a boxed heading on its own line opens its section");
 
+  /* From the next week: a paragraph that names something and then says, in
+     so many words, that nothing new reached a threshold. */
+  const ctx = extractFromSource({ title: "Probe Visit Notes.docx", text: "Safety flags: The incident last month involved police, no charges were filed, and it belongs to the other household. No new safety threshold for her in this visit. Naming it here so the team holds it in view.", families: fams, today }).items;
+  check(ctx.length === 1 && !ctx[0].urgent && ctx[0].agenda, "\"No new safety threshold\" anywhere in the paragraph makes it a watch item on Thursday's list");
+  const known = extractFromSource({ title: "Probe Visit Notes.docx", text: "Safety flags: Known context: a possible risk in the other household. No new disclosure this visit. Anything new goes to protocol the same day.", families: fams, today }).items;
+  check(known.length === 1 && !known[0].urgent, "and so does \"No new disclosure this visit\"");
+  const still = extractFromSource({ title: "Probe Visit Notes.docx", text: "Safety flags: Mom disclosed a new worry about the neighbour. No other concerns.", families: fams, today }).items;
+  check(still.length === 1 && still[0].urgent, "but \"No other concerns\" after a disclosure leaves the disclosure a red flag");
+
   /* A prep line with a topic for a label names its family after it. */
   const PREP2 = ["11\\. Logistics", "|  |  |", "| :-: | :-: |", "| ☐ | Lead exposure: Rosalind's labs pending; check in Thursday. |", "| ☐ | Screening: ask both Probe and Other about the new form. |"].join("\n");
   const p2 = extractFromSource({ title: "Supervision Prep Week of 2026-09-21.docx", text: PREP2, families: fams, today }).items;
@@ -356,6 +365,27 @@ check(
   check(p2.find((i) => /new form/.test(i.text))?.client === null, "a line naming two families is left for a person to place");
   const inVisit = extractFromSource({ title: "Probe Visit Notes.docx", text: PREP2, families: fams, today }).items;
   check(inVisit.every((i) => i.client === "f1"), "in a family's own note, a mention of another family does not move the item");
+}
+
+/* --- a family's name split in two ---------------------------------------- */
+
+/* From a real week: a note titled with the family's name as two words, for a
+   family the caseload spells as one. Its seven items, a safety note among
+   them, landed with no family. */
+{
+  const { extractFromSource } = await import("../src/lib/extract.js");
+  const { detectFamily } = await import("../src/lib/parse.js");
+  const fams = [
+    { id: "s1", name: "Sunbeam", alias: ["sunbeam"] },
+    { id: "s2", name: "Probe", alias: ["probe"] },
+  ];
+  const title = "Sun Beam Visit Notes September 2026.docx";
+  check(detectFamily(title, fams, { titles: true, fuzzy: true }) === "s1", "a title with the name as two words finds the family");
+  check(detectFamily("Sun Beem Visit Notes.docx", fams, { titles: true, fuzzy: true }) === "s1", "and so does one a letter off once joined");
+  check(detectFamily("Sun Beam went down", fams) === null, "only where names are forgiven: a note's body is read exactly");
+  check(detectFamily("Visit Notes September 2026.docx", fams, { titles: true, fuzzy: true }) === null, "ordinary neighbouring words do not join into a family");
+  const v = extractFromSource({ title, text: "5\\. Follow-Up\n☐ Text mom ahead of the weekend with one warm check-in.", families: fams, today: new Date("2026-09-28T12:00:00") });
+  check(v.client === "s1" && v.items.every((i) => i.client === "s1"), "and the note's items are filed under it");
 }
 
 /* --- latest visit first -------------------------------------------------- */

@@ -77,6 +77,13 @@ const opensWithNo = (s) => {
 };
 /* Past every "none" it opens with: "None from this visit. No disclosures.
    Monitoring item only: ..." is titled by what is being monitored. */
+/* "No new disclosure this visit." "No new safety threshold for her in this
+   visit." Said anywhere in the paragraph, that is the note's author telling
+   Thursday there is nothing new to act on: what comes with it is context to
+   hold in view, a watch item, not a new flag. Only these words count. "No
+   other concerns" after a real disclosure says nothing about the disclosure,
+   and it stays a flag. */
+const NOTHING_NEW = /\bno new (?:safety )?(?:disclosures?|threshold)\b|\bnothing at (?:a|the) (?:reporting )?threshold\b/i;
 const afterTheNo = (s) => {
   const all = sentences(s);
   let i = 0;
@@ -368,7 +375,7 @@ export function extractFromNote(text, { families, today, client: given } = {}) {
       }
     }
     const saysNo = !!sec?.urgent && opensWithNo(body);
-    const flag = !!sec?.urgent && !saysNo && !NOT_A_FLAG.test(body);
+    const flag = !!sec?.urgent && !saysNo && !NOT_A_FLAG.test(body) && !NOTHING_NEW.test(body);
     /* The title of a watch item is what is being watched, not the "none"
        it opened with; the whole paragraph stays in the note. */
     const text2 = simplify(saysNo ? afterTheNo(body) : body, { keepLong: flag });

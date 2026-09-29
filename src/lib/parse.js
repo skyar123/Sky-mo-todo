@@ -40,6 +40,10 @@ export function inferDue(month, day, today) {
  * matched exactly, and only when exactly one family is that close: two
  * families a letter apart means the name is genuinely ambiguous, and a wrong
  * guess files a child's items under someone else's.
+ *
+ * It also forgives a name split in two: "Sun Beam" for a family the caseload
+ * spells as one word. Two neighbouring words are tried joined, and count when
+ * the join is the name, or one letter off it.
  */
 export function detectFamily(line, families, { titles = false, fuzzy = false } = {}) {
   const low = String(line || "").toLowerCase();
@@ -51,11 +55,14 @@ export function detectFamily(line, families, { titles = false, fuzzy = false } =
   }
   if (!fuzzy) return null;
 
-  const words = new Set(low.split(/[^a-z]+/).filter((w) => w.length >= 6));
+  const all = low.split(/[^a-z]+/).filter(Boolean);
+  const words = new Set(all.filter((w) => w.length >= 6));
+  const joined = new Set(all.slice(1).map((w, i) => all[i] + w).filter((w) => w.length >= 6));
   const close = new Set();
   for (const { id, a } of candidates) {
     if (a.length < 6 || /[^a-z]/.test(a)) continue;
     for (const w of words) if (oneEditApart(w, a)) close.add(id);
+    for (const w of joined) if (w === a || oneEditApart(w, a)) close.add(id);
   }
   return close.size === 1 ? [...close][0] : null;
 }
