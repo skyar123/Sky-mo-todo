@@ -9,8 +9,16 @@ export const KIND = {
   cpp: "Clinical and CPP",
   plan: "Plans and paperwork",
   admin: "Admin",
+  supervision: "For supervision",
 };
+/* The kinds a person can file a to-do under. "For supervision" is not one of
+   them: picking it by mistake would take a task out of every list and count. */
 export const ORDER = ["assess", "care", "cpp", "plan", "admin"];
+
+/* Lines a note marks for reflective supervision. They are prompts for a
+   meeting, not jobs to finish, so they are kept out of every to-do list and
+   count and gathered where the meetings are prepared instead. */
+export const isSupervision = (t) => t?.kind === "supervision";
 export const LANES = [["sky", "Me"], ["mo", "Mo"], ["both", "Both"]];
 
 /* Reminder text.

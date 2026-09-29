@@ -1,15 +1,31 @@
 import React, { useRef, useState } from "react";
 import { S, LINE } from "../styles.js";
 import { iso } from "../lib/dates.js";
-import { PEOPLE, HANDS } from "../lib/identity.js";
+import { PEOPLE, HANDS, nameOf } from "../lib/identity.js";
+import { copyText } from "../lib/clipboard.js";
 import { handOff } from "../lib/handoff.js";
 import { runningBuild, startAgain } from "../lib/fresh.js";
 
 /* Everything the board remembers lives in one browser. Clearing site data,
    a new phone or a reinstall takes it with it, so a backup is not optional
    housekeeping. The file is written locally and never uploaded. */
+/** A text the person holding this phone can send the other, to get them on. */
+export function setupMessage(me, them) {
+  const url = typeof location !== "undefined" ? `${location.origin}${location.pathname}` : "";
+  return [
+    `Hi ${them}, it's ${me}. This is the caseload board we're sharing: ${url}`,
+    "",
+    "1. Open it in Safari on your phone, tap Share, then Add to Home Screen.",
+    "2. Open it from your home screen and put in the passcode I gave you.",
+    `3. When it asks whose phone it is, tap ${them}.`,
+    "",
+    "After that, anything either of us ticks or adds shows up on both phones.",
+  ].join("\n");
+}
+
 export function BackupSheet({ close, exportBlob, importBlob, onLock, who, setWho, hand, setHand, shared, calendar, today, flash, storageOk }) {
   const file = useRef(null);
+  const other = who === "mo" ? "sky" : "mo";
   const [confirmImport, setConfirmImport] = useState(null);
   const [showProject, setShowProject] = useState(false);
   const [draftId, setDraftId] = useState("");
@@ -85,6 +101,31 @@ export function BackupSheet({ close, exportBlob, importBlob, onLock, who, setWho
             <div style={{ ...S.tip, marginTop: 4 }}>
               This board is shared. Ticks, notes and supplies sync between both of you.
               Only the labels change here, not who a task belongs to.
+            </div>
+          </div>
+        )}
+
+        {/* A board for two that one person uses is a to-do list with extra
+            steps. Nothing on it has ever come from the other phone, and the
+            fix is a message, not a feature. The passcode is deliberately not
+            in it: that one is said out loud. */}
+        {shared && who && (
+          <div style={{ marginBottom: 18 }}>
+            <div style={S.fieldLabel}>Get {nameOf(other)} set up</div>
+            <div style={{ ...S.rowWrap, marginTop: 6 }}>
+              <button
+                onClick={async () => {
+                  const ok = await copyText(setupMessage(nameOf(who), nameOf(other)));
+                  flash(ok ? `Copied. Paste it into a text to ${nameOf(other)}.` : "Could not copy on this phone");
+                }}
+                style={S.mini}
+              >
+                Copy a setup message for {nameOf(other)}
+              </button>
+            </div>
+            <div style={{ ...S.tip, marginTop: 4 }}>
+              The link and three steps, ready to text. The passcode is not in it;
+              tell {nameOf(other)} that in person.
             </div>
           </div>
         )}

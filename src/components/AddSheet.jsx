@@ -2,6 +2,7 @@ import React, { useMemo, useState } from "react";
 import { S, LINE } from "../styles.js";
 import { parseNotes } from "../lib/parse.js";
 import { extractFromDoc, itemsToTasks } from "../lib/extract.js";
+import { datedByClock } from "../lib/paperwork.js";
 
 /* A full visit note and a scratch list of thoughts want different treatment.
    A note carries its own structure, so it gets read structurally and shown
@@ -46,7 +47,7 @@ export function AddSheet({ families, today, close, add, flash }) {
       }
       /* Picking a family by hand overrides what each block said it was. */
       const items = cid ? chosen.map((i) => ({ ...i, client: cid })) : chosen;
-      add(itemsToTasks(items, { client: cid || parsed.client }));
+      add(datedByClock(itemsToTasks(items, { client: cid || parsed.client }), families, today));
       flash(`${chosen.length} added`);
       close();
       return;

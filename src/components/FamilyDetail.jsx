@@ -2,12 +2,33 @@ import React from "react";
 import { S } from "../styles.js";
 import { Fold, Field } from "./bits.jsx";
 import { Task, QuickAdd } from "./Task.jsx";
-import { SUPPLIES, KIND, ORDER } from "../data/library.js";
+import { SUPPLIES, KIND, ORDER, isSupervision } from "../data/library.js";
 import { LONG, iso, fmtShort, parseISO } from "../lib/dates.js";
 import { isScheduled } from "../lib/schedule.js";
+import { latestVisitByFamily, isEarlier } from "../lib/current.js";
+import { isPaperwork, paperworkDue } from "../lib/paperwork.js";
+import { PaperRow } from "./Paperwork.jsx";
+import { LINE } from "../styles.js";
 
 export function FamilyDetail({ c, tasks, families, familyById, supplies, drops, today, board, who, onFlash, onBack }) {
-  const mine = tasks.filter((x) => x.client === c.id);
+  const all = tasks.filter((x) => x.client === c.id);
+  /* The family's current to-dos; what its notes marked for supervision;
+     and what earlier visits left that nobody touched once a newer note came
+     in. Supervision prompts used to be counted as open tasks without being
+     shown, and earlier leftovers made every family look like twenty jobs. */
+  const latest = latestVisitByFamily(tasks);
+  const mine = all.filter((x) => !isSupervision(x) && !isEarlier(x, latest) && !isPaperwork(x));
+  /* What the case calendar asks of this family in the next two months, and
+     what is already late. Further out is noise on a phone; when nothing is
+     that close, the next step is shown so the page never says "nothing". */
+  const paperSoon = paperworkDue(all, today, 60);
+  const paperNext = paperSoon.length ? [] : paperworkDue(all, today, 400).slice(0, 1);
+  const paperShown = [...paperSoon, ...paperNext];
+  const admitted = parseISO(c.admit || "");
+  /* Supervision prompts fold with the rest of their visit: a reflection from
+     three visits ago was for a supervision that has already happened. */
+  const earlier = all.filter((x) => isEarlier(x, latest));
+  const forSupervision = all.filter((x) => isSupervision(x) && !x.done && !isEarlier(x, latest));
   const openCount = mine.filter((x) => !x.done).length;
   const sup = supplies[c.id] || [];
   const lastDrop = drops[c.id] ? parseISO(drops[c.id]) : null;
@@ -30,6 +51,25 @@ export function FamilyDetail({ c, tasks, families, familyById, supplies, drops, 
           </div>
         </div>
       </div>
+
+      <Fold title={`Paperwork${paperSoon.length ? ` (${paperSoon.length})` : ""}`} defaultOpen={paperSoon.length > 0}>
+        {admitted ? (
+          <>
+            <div style={{ ...S.fieldLabel, marginBottom: 6 }}>
+              Admitted {fmtShort(admitted)}{c.admitEstimated ? " (estimated, confirm it)" : ""}. Dates below count from it.
+            </div>
+            {paperShown.map((t) => (
+              <PaperRow key={t.id} t={t} family={c} today={today} board={board} onFlash={onFlash} showFamily={false} />
+            ))}
+            {paperNext.length > 0 && <div style={S.tip}>Nothing due in the next two months. That is the next step.</div>}
+          </>
+        ) : (
+          <div style={S.tip}>
+            No admission date for {c.name} yet, so the SNIFFs, plan reviews and batteries
+            are not dated. Once it is added to the caseload they appear here and on the day screen.
+          </div>
+        )}
+      </Fold>
 
       {(c.caregiver || c.childNote || c.bring) && (
         <Fold title="Before you go in" defaultOpen>
@@ -95,6 +135,56 @@ export function FamilyDetail({ c, tasks, families, familyById, supplies, drops, 
         {mine.length === 0 && <div style={S.empty}>Nothing on this family yet.</div>}
         <QuickAdd client={c.id} board={board} onFlash={onFlash} />
       </Fold>
+
+      {earlier.length > 0 && (
+        <Fold title={`From earlier visits (${earlier.length})`}>
+          <div style={{ ...S.fieldLabel, marginBottom: 6 }}>
+            Left by an older note that a newer one has replaced, and not touched
+            since. The newer note is the plan now. Tick what got done; anything
+            still needed goes back on the list.
+          </div>
+          {earlier.map((x) => (
+            <div key={x.id} data-earlier={x.id} style={{ ...S.taskTop, borderBottom: `1px solid ${LINE}`, alignItems: "center" }} className="handed">
+              <button
+                onClick={() => board.toggle(x.id)}
+                style={{ ...S.box, borderColor: c.color }}
+                role="checkbox"
+                aria-checked={false}
+                aria-label={`Mark done: ${x.text}`}
+              />
+              <span style={{ ...S.taskText, cursor: "default", opacity: 0.75 }}>
+                {x.text}
+                {x.noted && <span style={{ display: "block", fontSize: 11.5, opacity: 0.6 }}>from the {fmtShort(parseISO(x.noted))} note</span>}
+              </span>
+              <button onClick={() => { board.update(x.id, { kept: true }); onFlash?.("Back on the list"); }} style={S.mini}>
+                Still needed
+              </button>
+            </div>
+          ))}
+        </Fold>
+      )}
+
+      {forSupervision.length > 0 && (
+        <Fold title={`For supervision (${forSupervision.length})`}>
+          <div style={{ ...S.fieldLabel, marginBottom: 6 }}>
+            From this family's notes. Not tasks: the questions to take into the room.
+            All of them are also on the teaming screen.
+          </div>
+          {forSupervision.map((x) => (
+            <Task
+              key={x.id}
+              x={x}
+              color={c.color}
+              today={today}
+              families={families}
+              familyById={familyById}
+              board={board}
+              who={who}
+              onFlash={onFlash}
+            />
+          ))}
+        </Fold>
+      )}
 
       {c.watch.length > 0 && (
         <Fold title="Watching">

@@ -27,8 +27,11 @@ export function Field({ label, body }) {
 /* `time` overrides the family's standing slot. Without it a row sourced from
    the calendar would announce itself as live and then show the typed-in time,
    which is worse than not being live at all. */
-export function VisitRow({ c, count, overdue, supplies, changed, time, onClick }) {
+export function VisitRow({ c, count, overdue, supplies, paper, changed, time, onClick }) {
   const bring = supplies && supplies.length ? supplies.join(", ").toLowerCase() : "";
+  /* The paperwork that can be done at this visit: the SNIFF is done with the
+     caregiver, so the visit is when it gets done or does not. */
+  const due = paper && paper.length ? [...new Set(paper.map((t) => t.text.split(",")[0]))].join(" · ") : "";
   return (
     <button onClick={onClick} style={S.visit} data-visit={c.id}>
       <span style={S.visitTime}>{time || c.time || "—"}</span>
@@ -36,6 +39,7 @@ export function VisitRow({ c, count, overdue, supplies, changed, time, onClick }
       <span style={{ flex: 1 }}>
         <span style={S.visitName}>{c.name}</span>
         {bring && <span style={S.supLine}>bring {bring}</span>}
+        {due && <span style={{ ...S.supLine, color: "#B3263A", opacity: 1 }}>paperwork: {due}</span>}
       </span>
       {changed && (
         <span

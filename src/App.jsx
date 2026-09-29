@@ -22,6 +22,9 @@ import { resolveToday, addDays, iso, dueInfo } from "./lib/dates.js";
 import { liveAgendaFor, visitsToText, upcomingTextDays } from "./lib/schedule.js";
 import { useCalendar } from "./lib/useCalendar.js";
 import { detectFamily } from "./lib/parse.js";
+import { isSupervision } from "./data/library.js";
+import { latestVisitByFamily, isEarlier } from "./lib/current.js";
+import { paperworkSeeds, paperworkDue, isPaperwork } from "./lib/paperwork.js";
 
 const TABS = ["day", "families", "week", "texts", "print"];
 const TAB_LABELS = [["day", "Day"], ["families", "Families"], ["week", "Week"], ["texts", "Texts"], ["print", "Print"]];
@@ -41,9 +44,15 @@ const SYNC = {
 /** Monday of the week `d` falls in, for the printed header. */
 const weekStartOf = (d) => addDays(d, -((d.getDay() + 6) % 7));
 
-export default function App({ caseload, onLock, crypto }) {
-  const { families } = caseload;
+export default function App({ caseload: loaded, onLock, crypto }) {
   const today = useMemo(() => resolveToday(), []);
+  /* Each family's paperwork, worked out from its admission date, joins the
+     seeded tasks: dated, ticked and synced like any other. */
+  const caseload = useMemo(
+    () => ({ ...loaded, seedTasks: [...loaded.seedTasks, ...paperworkSeeds(loaded.families, today)] }),
+    [loaded, today]
+  );
+  const { families } = caseload;
 
   /* Declared before useBoard: the board stamps changes with whoever is holding
      the device, so it needs this value on the first render. */
@@ -105,20 +114,40 @@ export default function App({ caseload, onLock, crypto }) {
   const boardWithUndo = useMemo(() => ({ ...board, removeWithUndo }), [board, removeWithUndo]);
 
   const inLane = useCallback((t) => lane === "all" || t.lane === lane || t.lane === "both", [lane]);
-  const laneTasks = useMemo(() => board.openTasks.filter(inLane), [board.openTasks, inLane]);
+  /* Supervision prompts are not to-dos, so no count, due list or past-due
+     pile includes them. They live on the teaming screen. */
+  /* An earlier visit's untouched leftovers step back once a newer note for
+     that family is in: no count, due list or past-due pile includes them.
+     They are still on the family, folded under "From earlier visits". */
+  const latest = useMemo(() => latestVisitByFamily(board.tasks), [board.tasks]);
+  /* Paperwork has its own place at the top of the day and of each family, so
+     it is kept out of these: counted twice, it would also be buried twice,
+     in the past-due pile and among the week's errands. */
+  const laneTasks = useMemo(
+    () => board.openTasks.filter((t) => !isSupervision(t) && !isEarlier(t, latest) && !isPaperwork(t)).filter(inLane),
+    [board.openTasks, inLane, latest]
+  );
+  /* Late, due within a fortnight, or open for starting, in date order. */
+  const paperwork = useMemo(
+    () => paperworkDue(board.tasks, today).filter(inLane),
+    [board.tasks, today, inLane]
+  );
 
-  /* Per-family open and overdue counts, computed once per change. */
+  /* Per-family open and overdue counts, computed once per change, and the
+     paperwork each family has due, for the visit rows. */
   const counts = useMemo(() => {
     const out = {};
+    const slot = (id) => (out[id] = out[id] || { open: 0, overdue: 0, paper: [] });
     for (const t of laneTasks) {
       if (!t.client) continue;
-      const c = (out[t.client] = out[t.client] || { open: 0, overdue: 0 });
+      const c = slot(t.client);
       c.open += 1;
       const d = dueInfo(t.due, today);
       if (d?.days < 0) c.overdue += 1;
     }
+    for (const t of paperwork) slot(t.client).paper.push(t);
     return out;
-  }, [laneTasks, today]);
+  }, [laneTasks, paperwork, today]);
 
   const byId = useMemo(() => new Map(families.map((c) => [c.id, c])), [families]);
 
@@ -143,8 +172,8 @@ export default function App({ caseload, onLock, crypto }) {
   );
 
   const agendaCount = useMemo(
-    () => board.openTasks.filter((t) => t.agenda).length,
-    [board.openTasks]
+    () => board.openTasks.filter((t) => t.agenda && !isEarlier(t, latest)).length,
+    [board.openTasks, latest]
   );
 
   /* What the other person did while this device was not looking. Reads all
@@ -367,7 +396,7 @@ export default function App({ caseload, onLock, crypto }) {
 
         {!searching && overdueOpen && (
           <Overdue
-            tasks={board.tasks}
+            tasks={laneTasks}
             familyById={byId}
             today={today}
             board={boardWithUndo}
@@ -445,6 +474,8 @@ export default function App({ caseload, onLock, crypto }) {
             events={calendar.events}
             detectFamily={detectFamily}
             overdue={overdue}
+            paperwork={paperwork}
+            board={boardWithUndo}
             onOpenOverdue={() => { setOverdueOpen(true); setOpenId(null); }}
             onOpenTeaming={() => { setTeamingOpen(true); setOpenId(null); }}
             onCatchUp={catchUp}
