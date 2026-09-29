@@ -137,8 +137,10 @@ check(famText.includes(fam0.child), "child line present");
 check(famText.includes(fam0.clinician), "clinician shown");
 await page.screenshot({ path: `${SHOTS}/03-family.png`, fullPage: true });
 
-/* --- ticking a task, and whether it survives a reload --- */
-const boxes = page.locator('main [role="checkbox"]');
+/* --- ticking a task, and whether it survives a reload ---
+   An ordinary task: a paperwork step leaves its list once ticked, and has
+   its own suite. */
+const boxes = page.locator('main [role="checkbox"]:not([data-paper] [role="checkbox"])');
 await boxes.first().click();
 await page.waitForTimeout(700);
 check((await page.locator('main [role="checkbox"][aria-checked="true"]').count()) >= 1, "a task can be ticked");

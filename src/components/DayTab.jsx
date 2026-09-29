@@ -6,6 +6,7 @@ import { LONG, fmtDay, dueInfo, spokenDate, addDays } from "../lib/dates.js";
 import { agendaFor, liveAgendaFor } from "../lib/schedule.js";
 import { buildICS, downloadICS, icsFilename } from "../lib/ics.js";
 import { handoffMessage } from "../lib/handoff.js";
+import { PaperworkBlock } from "./Paperwork.jsx";
 
 /* "12 minutes ago" is more use than a timestamp when the question is really
    "is this current?". */
@@ -49,7 +50,7 @@ function BlockRow({ item, teaming, agendaCount, onOpenTeaming }) {
    exactly when you want to see what is coming. */
 const AHEAD = 5;
 
-export function DayTab({ caseload, today, counts, supplies, soon, openCount, unsent, reminderDay, familyById, changedFamilies, theirChanges, theirName, agendaCount, isTeamingBlock, teamingBlock, live, liveAsOf, calendarName, events, detectFamily, overdue, onOpenOverdue, onCatchUp, onOpenTeaming, onFlash, onOpenFamily, onGoTexts }) {
+export function DayTab({ caseload, today, counts, supplies, soon, openCount, unsent, reminderDay, familyById, changedFamilies, theirChanges, theirName, agendaCount, isTeamingBlock, teamingBlock, live, liveAsOf, calendarName, events, detectFamily, overdue, paperwork = [], board, onOpenOverdue, onCatchUp, onOpenTeaming, onFlash, onOpenFamily, onGoTexts }) {
   const { families, blocks } = caseload;
   const standing = agendaFor(families, blocks, today);
 
@@ -119,6 +120,7 @@ export function DayTab({ caseload, today, counts, supplies, soon, openCount, uns
           count={counts[item.c.id]?.open || 0}
           overdue={counts[item.c.id]?.overdue || 0}
           supplies={supplies[item.c.id]}
+          paper={counts[item.c.id]?.paper}
           changed={changedFamilies.has(item.c.id)}
           time={item.time}
           onClick={() => onOpenFamily(item.c.id)}
@@ -179,7 +181,12 @@ export function DayTab({ caseload, today, counts, supplies, soon, openCount, uns
         </button>
       )}
 
-      <div style={{ ...S.h2, marginTop: 0 }}>Today</div>
+      {/* Paperwork first. It has a deadline set by the admission date and
+          nobody else will remember it, and it used to sit at the bottom of a
+          week of errands from visit notes, which is where it got missed. */}
+      <PaperworkBlock items={paperwork} familyById={familyById} today={today} board={board} onFlash={onFlash} />
+
+      <div style={{ ...S.h2, marginTop: paperwork.length ? undefined : 0 }}>Today</div>
       {rowsFor(agenda, "t")}
       {agenda.length === 0 && <div style={S.empty}>No visits today.</div>}
 

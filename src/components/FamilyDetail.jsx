@@ -6,6 +6,8 @@ import { SUPPLIES, KIND, ORDER, isSupervision } from "../data/library.js";
 import { LONG, iso, fmtShort, parseISO } from "../lib/dates.js";
 import { isScheduled } from "../lib/schedule.js";
 import { latestVisitByFamily, isEarlier } from "../lib/current.js";
+import { isPaperwork, paperworkDue } from "../lib/paperwork.js";
+import { PaperRow } from "./Paperwork.jsx";
 import { LINE } from "../styles.js";
 
 export function FamilyDetail({ c, tasks, families, familyById, supplies, drops, today, board, who, onFlash, onBack }) {
@@ -15,7 +17,14 @@ export function FamilyDetail({ c, tasks, families, familyById, supplies, drops, 
      in. Supervision prompts used to be counted as open tasks without being
      shown, and earlier leftovers made every family look like twenty jobs. */
   const latest = latestVisitByFamily(tasks);
-  const mine = all.filter((x) => !isSupervision(x) && !isEarlier(x, latest));
+  const mine = all.filter((x) => !isSupervision(x) && !isEarlier(x, latest) && !isPaperwork(x));
+  /* What the case calendar asks of this family in the next two months, and
+     what is already late. Further out is noise on a phone; when nothing is
+     that close, the next step is shown so the page never says "nothing". */
+  const paperSoon = paperworkDue(all, today, 60);
+  const paperNext = paperSoon.length ? [] : paperworkDue(all, today, 400).slice(0, 1);
+  const paperShown = [...paperSoon, ...paperNext];
+  const admitted = parseISO(c.admit || "");
   /* Supervision prompts fold with the rest of their visit: a reflection from
      three visits ago was for a supervision that has already happened. */
   const earlier = all.filter((x) => isEarlier(x, latest));
@@ -42,6 +51,25 @@ export function FamilyDetail({ c, tasks, families, familyById, supplies, drops, 
           </div>
         </div>
       </div>
+
+      <Fold title={`Paperwork${paperSoon.length ? ` (${paperSoon.length})` : ""}`} defaultOpen={paperSoon.length > 0}>
+        {admitted ? (
+          <>
+            <div style={{ ...S.fieldLabel, marginBottom: 6 }}>
+              Admitted {fmtShort(admitted)}{c.admitEstimated ? " (estimated, confirm it)" : ""}. Dates below count from it.
+            </div>
+            {paperShown.map((t) => (
+              <PaperRow key={t.id} t={t} family={c} today={today} board={board} onFlash={onFlash} showFamily={false} />
+            ))}
+            {paperNext.length > 0 && <div style={S.tip}>Nothing due in the next two months. That is the next step.</div>}
+          </>
+        ) : (
+          <div style={S.tip}>
+            No admission date for {c.name} yet, so the SNIFFs, plan reviews and batteries
+            are not dated. Once it is added to the caseload they appear here and on the day screen.
+          </div>
+        )}
+      </Fold>
 
       {(c.caregiver || c.childNote || c.bring) && (
         <Fold title="Before you go in" defaultOpen>

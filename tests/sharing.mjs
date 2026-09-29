@@ -15,6 +15,10 @@ import { chromium } from "playwright";
 import { loadFixture } from "./fixture.mjs";
 import { LONG } from "../src/lib/dates.js";
 
+/* Ordinary tasks. A paperwork step leaves its list once ticked, so it is no
+   use for checking that a tick arrived. */
+const TASK_BOX = 'main [role="checkbox"]:not([data-paper] [role="checkbox"])';
+
 const BASE = process.env.BASE || "http://localhost:4173";
 const SETTLE = 6000; // debounced push, plus the other device's next pull
 
@@ -56,7 +60,7 @@ const revOf = async () => (await (await fetch(`${BASE}/api/board`)).json()).rev;
   await page.waitForSelector("text=on the caseload");
   await page.click(`button:has-text("${fam}")`);
   await page.waitForSelector("text=Open tasks", { timeout: 10000 });
-  await page.locator('main [role="checkbox"]').first().click();
+  await page.locator(TASK_BOX).first().click();
   await page.waitForTimeout(SETTLE);
 
   (await revOf()) === 0
@@ -158,7 +162,7 @@ await openFamily(A);
 await openFamily(B);
 
 /* A ticks one task. B should see it. */
-await A.locator('main [role="checkbox"]').first().click();
+await A.locator(TASK_BOX).first().click();
 await A.waitForTimeout(SETTLE);
 if (process.env.SYNC_DEBUG) {
   const st = await A.evaluate(() => {
@@ -173,7 +177,7 @@ const bSees = await checked(B);
 bSees >= 1 ? ok(`B sees the task A ticked (${bSees} checked)`) : bad(`B did not see A's tick (${bSees} checked)`);
 
 /* B ticks a different one. A must gain it without losing its own. */
-await B.locator('main [role="checkbox"]').nth(2).click();
+await B.locator(TASK_BOX).nth(2).click();
 await B.waitForTimeout(SETTLE);
 await refresh(A);
 const aSees = await checked(A);

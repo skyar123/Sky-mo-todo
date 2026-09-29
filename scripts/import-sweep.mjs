@@ -38,6 +38,7 @@ import { decryptJSON, decryptWithKey, encryptWithKey } from "../src/lib/crypto.j
 import { writeToken } from "../src/lib/sync.js";
 import { mergeShared } from "../src/lib/shared.js";
 import { extractFromDoc, extractFromSource, itemsToTasks } from "../src/lib/extract.js";
+import { datedByClock } from "../src/lib/paperwork.js";
 
 const TAKES_VALUE = new Set(["--site", "--endpoint", "--caseload", "--notes"]);
 const opts = {};
@@ -117,7 +118,7 @@ async function readSources() {
   if (!NOTES) {
     const text = await readFile(loose[0], "utf8");
     const { items, families: blocks } = extractFromDoc(text, { families, today: new Date() });
-    const tasks = itemsToTasks(items, { client: null }).map((t) => ({ ...t, id: idFor(t) }));
+    const tasks = datedByClock(itemsToTasks(items, { client: null }), families, new Date()).map((t) => ({ ...t, id: idFor(t) }));
     return [{ source: null, title: path.basename(loose[0]), tasks, blocks }];
   }
 
@@ -137,7 +138,10 @@ async function readSources() {
        since editing an old note later changes when it was modified but not
        which visit it was about. The day it was last changed otherwise. */
     const noted = (title.match(/\d{4}-\d{2}-\d{2}/) || [String(modified).slice(0, 10)])[0];
-    const tasks = itemsToTasks(items, { client: null }).map((t) => ({
+    /* A line asking for the SNIFF, the HOPE or a plan review takes that
+       step's date from the family's admission clock, so it sorts with the
+       paperwork instead of sinking among the undated errands. */
+    const tasks = datedByClock(itemsToTasks(items, { client: null }), families, new Date()).map((t) => ({
       ...t,
       id: idFor(t),
       source: id,
@@ -146,7 +150,7 @@ async function readSources() {
          for another family, or anything in a supervision prep, is not. */
       fromVisit: !!noteFamily && t.client === noteFamily,
     }));
-    out.push({ source: { id, modified }, noted, title, tasks });
+    out.push({ source: { id, modified }, noted, title, tasks, undated: !/\d{4}-\d{2}-\d{2}/.test(title) });
   }
   /* Oldest visit first, so that when two notes produce the same item, the
      newer note is the one it ends up belonging to. */
@@ -160,7 +164,11 @@ if (NOTES) {
     const per = new Map();
     for (const t of s.tasks) per.set(familyName(t.client), (per.get(familyName(t.client)) || 0) + 1);
     const summary = [...per].map(([k, n]) => `${k} ${n}`).join(", ") || "nothing to add";
-    console.log(`${s.title}: ${s.tasks.length} item(s) (${summary})`);
+    /* A title with no visit date ("September 2026") is dated by when the
+       file was saved, which can be days after the visit. Said, so the title
+       can be fixed; which visit is newest decides what folds away. */
+    const guess = s.undated ? ` [no date in the title, so dated ${s.noted}, the day it was saved]` : "";
+    console.log(`${s.title}: ${s.tasks.length} item(s) (${summary})${guess}`);
   }
 } else {
   /* The older one-document shape reports the way it always has; the routine
