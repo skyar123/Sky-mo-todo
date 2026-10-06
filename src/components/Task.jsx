@@ -13,11 +13,13 @@ export function pillStyle(d) {
   return { background: "#EFEBF6", color: "#3A2E12" };
 }
 
+export const DONE_PILL = { background: "#E4F4EA", color: "#1F6B43", borderColor: "#BFE3CD" };
+
 /* Tapping a task opens it already editable. There is no separate edit mode and
    no save button: every field writes straight through, and the board's
    debounced save picks it up. Getting a due date onto a task should cost one
    tap and one date, not a trip through a dialog. */
-export function Task({ x, color, today, families, familyById, board, who, onFlash }) {
+export function Task({ x, color, today, families, familyById, board, who, onFlash, onToggle, leaving }) {
   const [open, setOpen] = useState(false);
   const d = dueInfo(x.due, today);
   const set = (patch) => board.update(x.id, patch);
@@ -51,10 +53,10 @@ export function Task({ x, color, today, families, familyById, board, who, onFlas
   }
 
   return (
-    <div style={{ ...S.task, opacity: x.done ? 0.45 : 1 }}>
+    <div data-row={x.id} style={{ ...S.task, opacity: x.done && !leaving ? 0.45 : 1 }} className={leaving ? "skmo-leaving" : undefined}>
       <div style={S.taskTop} className="handed">
         <button
-          onClick={() => board.toggle(x.id)}
+          onClick={() => (onToggle ? onToggle(x) : board.toggle(x.id))}
           style={{
             ...S.box,
             borderColor: x.urgent && !x.done ? "#C62A40" : color,
@@ -64,7 +66,7 @@ export function Task({ x, color, today, families, familyById, board, who, onFlas
           aria-checked={x.done}
           aria-label={x.done ? `Mark not done: ${x.text}` : `Mark done: ${x.text}`}
         >
-          <span aria-hidden="true">{x.done ? "✓" : ""}</span>
+          <span aria-hidden="true" className={x.done ? "skmo-check" : undefined}>{x.done ? "✓" : ""}</span>
         </button>
         <button
           onClick={() => setOpen(!open)}
@@ -81,7 +83,12 @@ export function Task({ x, color, today, families, familyById, board, who, onFlas
             Safety
           </span>
         )}
-        {d && <span style={{ ...S.pill, ...pillStyle(d) }}>{d.label}</span>}
+        {/* Once it is ticked, how late it was stops mattering. */}
+        {x.done ? (
+          <span style={{ ...S.pill, ...DONE_PILL }}>done</span>
+        ) : (
+          d && <span style={{ ...S.pill, ...pillStyle(d) }}>{d.label}</span>
+        )}
       </div>
 
       {passedToMe && !x.done && (

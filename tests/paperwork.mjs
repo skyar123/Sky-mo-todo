@@ -4,7 +4,8 @@
    arithmetic done here rather than against the caseload. The screen half runs
    against the real caseload, whatever it holds on the day the suite runs, and
    checks the shape: paperwork above the day's visits, one tap to tick a step
-   off, and none of it in the past-due pile. */
+   off (with the check, the fade and the move to the Done list), and none of
+   it in the past-due pile. */
 
 import { chromium } from "playwright";
 import { loadFixture } from "./fixture.mjs";
@@ -109,11 +110,34 @@ const check = (cond, good, why) => (cond ? ok(good) : bad(why || good));
     const pastDue = await page.$$eval("[data-overdue]", (els) => els.map((e) => e.getAttribute("data-overdue")));
     check(!pastDue.some((id) => id.startsWith("pw_")), "and none of it is in the past-due pile");
 
+    /* A tick does not make the row vanish under the thumb: the box fills
+       with a check, the row fades where it is, and then it is in the Done
+       list below rather than gone. */
     const first = rows[0];
     await page.click(`[data-paper="${first}"] [role="checkbox"]`);
-    await page.waitForTimeout(400);
-    const after = await page.$$eval("[data-paperwork] [data-paper]", (els) => els.map((e) => e.getAttribute("data-paper")));
-    check(!after.includes(first) && after.length === rows.length - 1, "one tap ticks a step off the list");
+    await page.waitForTimeout(150);
+    const ticking = await page.$eval(`[data-paperwork] [data-row="${first}"]`, (el) => ({
+      checked: el.querySelector('[role="checkbox"]').getAttribute("aria-checked"),
+      mark: !!el.querySelector(".skmo-check"),
+      fading: el.classList.contains("skmo-leaving"),
+      archived: !!el.closest("[data-archive]"),
+    })).catch(() => null);
+    check(ticking?.checked === "true" && ticking.mark, "a ticked step shows its check mark at once", `just after the tap: ${JSON.stringify(ticking)}`);
+    check(ticking?.fading && !ticking.archived, "and fades where it was rather than vanishing", `just after the tap: ${JSON.stringify(ticking)}`);
+    await page.waitForTimeout(2200);
+    const landed = await page.$$eval(`[data-paperwork] [data-archive] [data-archived="${first}"]`, (els) => els.length);
+    const open = await page.$$eval("[data-paperwork] [data-paper]:not([data-archive] [data-paper])", (els) => els.map((e) => e.getAttribute("data-paper")));
+    check(landed === 1 && !open.includes(first) && open.length === rows.length - 1, "then it is in the Done list under the paperwork, off the open list");
+    const header = await page.textContent("[data-paperwork] [data-archive]");
+    check(/Done lately · \d+/.test(header), "and the Done list says how many are in it");
+    const meter = await page.textContent("[data-paperwork] [data-meter]").catch(() => "");
+    check(/1 done in the last two weeks/.test(meter), "and the bar over the paperwork counts it as progress", `the bar says: ${meter}`);
+
+    /* One more tap there puts it back. */
+    await page.click(`[data-archived="${first}"] [role="checkbox"]`);
+    await page.waitForTimeout(500);
+    const back = await page.$$eval("[data-paperwork] [data-paper]:not([data-archive] [data-paper])", (els) => els.map((e) => e.getAttribute("data-paper")));
+    check(back.includes(first), "a tap in the Done list puts it back on the list");
 
     const family = fx.families.find((f) => f.id === expected[0].client);
     await page.click('button:has-text("Families")');

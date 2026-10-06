@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useRef } from "react";
 import { S } from "../styles.js";
 import { Fold, Field } from "./bits.jsx";
 import { Task, QuickAdd } from "./Task.jsx";
@@ -7,8 +7,12 @@ import { LONG, iso, fmtShort, parseISO } from "../lib/dates.js";
 import { isScheduled } from "../lib/schedule.js";
 import { latestVisitByFamily, isEarlier, isTodo } from "../lib/current.js";
 import { paperworkDue } from "../lib/paperwork.js";
-import { PaperRow } from "./Paperwork.jsx";
+import { PaperRow, usePaperTick } from "./Paperwork.jsx";
+import { Archive } from "./Archive.jsx";
+import { useSettle, doneAt } from "../lib/useSettle.js";
 import { LINE } from "../styles.js";
+
+const RECENT_PAPER_MS = 30 * 86400000;
 
 export function FamilyDetail({ c, tasks, families, familyById, supplies, drops, today, board, who, onFlash, onBack }) {
   const all = tasks.filter((x) => x.client === c.id);
@@ -17,19 +21,60 @@ export function FamilyDetail({ c, tasks, families, familyById, supplies, drops, 
      in. Supervision prompts used to be counted as open tasks without being
      shown, and earlier leftovers made every family look like twenty jobs. */
   const latest = latestVisitByFamily(tasks);
+  /* A ticked task stays in its place while it fades (see useSettle), and
+     only then moves to the Done list under it. `from` remembers which list
+     it was ticked in, so it fades where it was. */
+  const settle = useSettle();
+  const from = useRef(new Map());
+  const tick = (where) => (x) => {
+    if (x.done) {
+      board.toggle(x.id);
+      onFlash?.("Back on the list");
+      return;
+    }
+    from.current.set(x.id, where);
+    settle.settle(x.id, () => board.toggle(x.id));
+    onFlash?.("Done", { label: "Undo", run: () => board.toggle(x.id) });
+  };
+  const fadingIn = (where) => (x) => settle.isLeaving(x.id) && from.current.get(x.id) === where;
+  const paper = usePaperTick(board, onFlash);
+
   const mine = all.filter((x) => isTodo(x, latest));
   /* What the case calendar asks of this family in the next two months, and
      what is already late. Further out is noise on a phone; when nothing is
      that close, the next step is shown so the page never says "nothing". */
   const paperSoon = paperworkDue(all, today, 60);
   const paperNext = paperSoon.length ? [] : paperworkDue(all, today, 400).slice(0, 1);
-  const paperShown = [...paperSoon, ...paperNext];
+  const paperRecent = all.filter((t) => t.paper && t.done && doneAt(t) > Date.now() - RECENT_PAPER_MS);
+  const paperShown = [...paperSoon, ...paperNext, ...paperRecent.filter((t) => paper.settle.isLeaving(t.id))]
+    .sort((a, b) => a.due.localeCompare(b.due));
+  const paperArchived = paperRecent.filter((t) => !paper.settle.isLeaving(t.id));
   const admitted = parseISO(c.admit || "");
   /* Supervision prompts fold with the rest of their visit: a reflection from
      three visits ago was for a supervision that has already happened. */
-  const earlier = all.filter((x) => isEarlier(x, latest));
-  const forSupervision = all.filter((x) => isSupervision(x) && !x.done && !isEarlier(x, latest));
+  const earlier = all.filter((x) => isEarlier(x, latest) || fadingIn("earlier")(x));
+  const supervisionAll = all.filter((x) => isSupervision(x) && !isEarlier(x, latest));
+  const forSupervision = supervisionAll.filter((x) => !x.done || fadingIn("supervision")(x));
+  const supervisionDone = supervisionAll.filter((x) => x.done && !settle.isLeaving(x.id));
+  /* Open, plus anything ticked here a moment ago and still fading. */
+  const showing = mine.filter((x) => !x.done || fadingIn("tasks")(x));
+  const finished = mine.filter((x) => x.done && !settle.isLeaving(x.id));
   const openCount = mine.filter((x) => !x.done).length;
+  const taskRow = (where) => (x) => (
+    <Task
+      key={x.id}
+      x={x}
+      color={c.color}
+      today={today}
+      families={families}
+      familyById={familyById}
+      board={board}
+      who={who}
+      onFlash={onFlash}
+      onToggle={tick(where)}
+      leaving={settle.isLeaving(x.id)}
+    />
+  );
   const sup = supplies[c.id] || [];
   const lastDrop = drops[c.id] ? parseISO(drops[c.id]) : null;
 
@@ -59,9 +104,15 @@ export function FamilyDetail({ c, tasks, families, familyById, supplies, drops, 
               Admitted {fmtShort(admitted)}{c.admitEstimated ? " (estimated, confirm it)" : ""}. Dates below count from it.
             </div>
             {paperShown.map((t) => (
-              <PaperRow key={t.id} t={t} family={c} today={today} board={board} onFlash={onFlash} showFamily={false} />
+              <PaperRow key={t.id} t={t} family={c} today={today} onTick={paper.onTick} leaving={paper.settle.isLeaving(t.id)} showFamily={false} />
             ))}
             {paperNext.length > 0 && <div style={S.tip}>Nothing due in the next two months. That is the next step.</div>}
+            <Archive
+              title="Done lately"
+              rows={paperArchived}
+              settle={paper.settle}
+              render={(t) => <PaperRow t={t} family={c} today={today} onTick={paper.onTick} showFamily={false} />}
+            />
           </>
         ) : (
           <div style={S.tip}>
@@ -111,29 +162,20 @@ export function FamilyDetail({ c, tasks, families, familyById, supplies, drops, 
 
       <Fold title={`Open tasks (${openCount})`} defaultOpen>
         {ORDER.map((g) => {
-          const rows = mine.filter((x) => x.kind === g);
+          const rows = showing.filter((x) => x.kind === g);
           if (!rows.length) return null;
           return (
             <div key={g} style={{ marginBottom: 10 }}>
               <div style={S.kindHead}>{KIND[g]}</div>
-              {rows.map((x) => (
-                <Task
-                  key={x.id}
-                  x={x}
-                  color={c.color}
-                  today={today}
-                  families={families}
-                  familyById={familyById}
-                  board={board}
-                  who={who}
-                  onFlash={onFlash}
-                />
-              ))}
+              {rows.map(taskRow("tasks"))}
             </div>
           );
         })}
-        {mine.length === 0 && <div style={S.empty}>Nothing on this family yet.</div>}
+        {showing.length === 0 && (
+          <div style={S.empty}>{finished.length ? "Everything here is done." : "Nothing on this family yet."}</div>
+        )}
         <QuickAdd client={c.id} board={board} onFlash={onFlash} />
+        <Archive rows={finished} settle={settle} render={taskRow("done")} />
       </Fold>
 
       {earlier.length > 0 && (
@@ -144,14 +186,22 @@ export function FamilyDetail({ c, tasks, families, familyById, supplies, drops, 
             still needed goes back on the list.
           </div>
           {earlier.map((x) => (
-            <div key={x.id} data-earlier={x.id} style={{ ...S.taskTop, borderBottom: `1px solid ${LINE}`, alignItems: "center" }} className="handed">
+            <div
+              key={x.id}
+              data-earlier={x.id}
+              data-row={x.id}
+              style={{ ...S.taskTop, borderBottom: `1px solid ${LINE}`, alignItems: "center" }}
+              className={`handed${settle.isLeaving(x.id) ? " skmo-leaving" : ""}`}
+            >
               <button
-                onClick={() => board.toggle(x.id)}
-                style={{ ...S.box, borderColor: c.color }}
+                onClick={() => tick("earlier")(x)}
+                style={{ ...S.box, borderColor: c.color, background: x.done ? c.color : "transparent" }}
                 role="checkbox"
-                aria-checked={false}
+                aria-checked={!!x.done}
                 aria-label={`Mark done: ${x.text}`}
-              />
+              >
+                <span aria-hidden="true" className={x.done ? "skmo-check" : undefined}>{x.done ? "✓" : ""}</span>
+              </button>
               <span style={{ ...S.taskText, cursor: "default", opacity: 0.75 }}>
                 {x.text}
                 {x.noted && <span style={{ display: "block", fontSize: 11.5, opacity: 0.6 }}>from the {fmtShort(parseISO(x.noted))} note</span>}
@@ -164,25 +214,14 @@ export function FamilyDetail({ c, tasks, families, familyById, supplies, drops, 
         </Fold>
       )}
 
-      {forSupervision.length > 0 && (
+      {supervisionAll.length > 0 && (
         <Fold title={`For supervision (${forSupervision.length})`}>
           <div style={{ ...S.fieldLabel, marginBottom: 6 }}>
             From this family's notes. Not tasks: the questions to take into the room.
             All of them are also on the teaming screen.
           </div>
-          {forSupervision.map((x) => (
-            <Task
-              key={x.id}
-              x={x}
-              color={c.color}
-              today={today}
-              families={families}
-              familyById={familyById}
-              board={board}
-              who={who}
-              onFlash={onFlash}
-            />
-          ))}
+          {forSupervision.map(taskRow("supervision"))}
+          <Archive title="Taken to supervision" rows={supervisionDone} settle={settle} render={taskRow("done")} />
         </Fold>
       )}
 

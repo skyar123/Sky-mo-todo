@@ -50,7 +50,7 @@ function BlockRow({ item, teaming, agendaCount, onOpenTeaming }) {
    exactly when you want to see what is coming. */
 const AHEAD = 5;
 
-export function DayTab({ caseload, today, counts, supplies, soon, openCount, unsent, reminderDay, familyById, changedFamilies, theirChanges, theirName, agendaCount, isTeamingBlock, teamingBlock, live, liveAsOf, calendarName, events, detectFamily, overdue, paperwork = [], board, onOpenOverdue, onCatchUp, onOpenTeaming, onFlash, onOpenFamily, onGoTexts }) {
+export function DayTab({ caseload, today, counts, supplies, soon, openCount, unsent, reminderDay, familyById, changedFamilies, theirChanges, theirName, agendaCount, isTeamingBlock, teamingBlock, live, liveAsOf, calendarName, events, detectFamily, overdue, paperwork = [], paperworkRecent = [], board, onOpenOverdue, onCatchUp, onOpenTeaming, onFlash, onOpenFamily, onGoTexts }) {
   const { families, blocks } = caseload;
   const standing = agendaFor(families, blocks, today);
 
@@ -184,9 +184,9 @@ export function DayTab({ caseload, today, counts, supplies, soon, openCount, uns
       {/* Paperwork first. It has a deadline set by the admission date and
           nobody else will remember it, and it used to sit at the bottom of a
           week of errands from visit notes, which is where it got missed. */}
-      <PaperworkBlock items={paperwork} familyById={familyById} today={today} board={board} onFlash={onFlash} />
+      <PaperworkBlock items={paperwork} recent={paperworkRecent} familyById={familyById} today={today} board={board} onFlash={onFlash} />
 
-      <div style={{ ...S.h2, marginTop: paperwork.length ? undefined : 0 }}>Today</div>
+      <div style={{ ...S.h2, marginTop: paperwork.length || paperworkRecent.length ? undefined : 0 }}>Today</div>
       {rowsFor(agenda, "t")}
       {agenda.length === 0 && <div style={S.empty}>No visits today.</div>}
 

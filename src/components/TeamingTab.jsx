@@ -5,6 +5,8 @@ import { nameOf } from "../lib/identity.js";
 import { pillStyle } from "./Task.jsx";
 import { isSupervision } from "../data/library.js";
 import { latestVisitByFamily, isEarlier } from "../lib/current.js";
+import { useSettle } from "../lib/useSettle.js";
+import { Archive } from "./Archive.jsx";
 
 /** The next time this standing meeting comes round, today included. */
 function nextOccurrence(block, today) {
@@ -25,6 +27,13 @@ export function TeamingTab({ block, families, familyById, tasks, today, board, o
   const [cid, setCid] = useState("");
   const [important, setImportant] = useState(false);
   const [openId, setOpenId] = useState(null);
+  /* A ticked line stays where it was while the check shows and it fades,
+     then glides down into "Talked about" (see useSettle). */
+  const settle = useSettle();
+  const tick = (t, message) => {
+    settle.settle(t.id, () => board.toggle(t.id));
+    onFlash?.(message, { label: "Undo", run: () => board.toggle(t.id) });
+  };
 
   const when = nextOccurrence(block, today);
   const isToday = when && when.getDay() === today.getDay();
@@ -41,19 +50,23 @@ export function TeamingTab({ block, families, familyById, tasks, today, board, o
      [individual] and [group] ones used to land either here, in the wrong
      meeting, or among a family's to-dos, where nobody looks while preparing
      for supervision. They are gathered below Thursday's list, by meeting. */
-  const supervision = useMemo(
-    () => tasks.filter((t) => isSupervision(t) && t.forum !== "team" && !t.done && !isEarlier(t, latest)),
+  const supervisionAll = useMemo(
+    () => tasks.filter((t) => isSupervision(t) && t.forum !== "team" && !isEarlier(t, latest)),
     [tasks, latest]
   );
+  const supervision = supervisionAll.filter((t) => !t.done || settle.isLeaving(t.id));
+  const supervised = supervisionAll.filter((t) => t.done && !settle.isLeaving(t.id));
   const forMine = supervision.filter((t) => t.forum !== "group");
   const forGroup = supervision.filter((t) => t.forum === "group");
   /* Flagged first inside each family: the meeting is short and the order on
      screen is the order it gets talked about. */
   const open = items
-    .filter((t) => !t.done)
+    .filter((t) => !t.done || settle.isLeaving(t.id))
     .slice()
     .sort((a, b) => (b.important ? 1 : 0) - (a.important ? 1 : 0));
-  const done = items.filter((t) => t.done);
+  const done = items.filter((t) => t.done && !settle.isLeaving(t.id));
+  const toBring = open.filter((t) => !t.done).length;
+  const bringUp = toBring ? `${toBring} to bring up.` : done.length ? "All of it talked about." : "Nothing on the list yet.";
 
   /* Grouped by family, with the unattached ones last: the meeting tends to
      move family by family. */
@@ -93,8 +106,8 @@ export function TeamingTab({ block, families, familyById, tasks, today, board, o
       <div style={S.sub}>
         {when
           ? isToday
-            ? `Today at ${block.time}. ${open.length} to bring up.`
-            : `${spokenDate(when)} at ${block.time}. ${open.length} to bring up.`
+            ? `Today at ${block.time}. ${bringUp}`
+            : `${spokenDate(when)} at ${block.time}. ${bringUp}`
           : "No standing teaming slot on the calendar."}
       </div>
 
@@ -141,7 +154,8 @@ export function TeamingTab({ block, families, familyById, tasks, today, board, o
 
       {open.length === 0 && (
         <div style={S.empty}>
-          Nothing on the list yet. Add it above, or open a task and tap “Bring to teaming”.
+          {done.length ? "Everything on the list has been talked about." : "Nothing on the list yet."}{" "}
+          Add it above, or open a task and tap “Bring to teaming”.
         </div>
       )}
 
@@ -159,32 +173,40 @@ export function TeamingTab({ block, families, familyById, tasks, today, board, o
             <span style={{ fontSize: 14.5, fontWeight: 700 }}>
               {family ? family.name : "Across the caseload"}
             </span>
-            <span style={{ fontSize: 12, opacity: 0.45 }}>{rows.length}</span>
+            <span style={{ fontSize: 12, opacity: 0.45 }}>{rows.filter((t) => !t.done).length}</span>
           </button>
 
           {rows.map((t) => {
             const d = dueInfo(t.due, today);
             const showing = openId === t.id;
             return (
-              <div key={t.id} style={{ borderBottom: `1px solid ${LINE}` }}>
+              <div
+                key={t.id}
+                data-row={t.id}
+                className={settle.isLeaving(t.id) ? "skmo-leaving" : undefined}
+                style={{ borderBottom: `1px solid ${LINE}` }}
+              >
                 <div style={{ ...S.taskTop, paddingBottom: 10 }} className="handed">
                   <button
-                    onClick={() => board.toggle(t.id)}
+                    onClick={() => !t.done && tick(t, "Talked about")}
                     style={{
                       ...S.box,
                       borderColor: t.important ? "#C62A40" : family ? family.color : "#B9AECE",
+                      background: t.done ? (family ? family.color : "#B9AECE") : "transparent",
                     }}
                     role="checkbox"
-                    aria-checked={false}
+                    aria-checked={!!t.done}
                     aria-label={`Mark discussed: ${t.text}`}
-                  />
+                  >
+                    <span aria-hidden="true" className={t.done ? "skmo-check" : undefined}>{t.done ? "✓" : ""}</span>
+                  </button>
                   {/* The whole line opens it. The old row had a tiny tick and a
                       tiny "off" side by side, and "off" on something with no
                       family put it out of reach, so the destructive one is no
                       longer the easy one to hit by mistake. */}
                   <button
                     onClick={() => setOpenId(showing ? null : t.id)}
-                    style={{ ...S.taskText, fontSize: 13.5, lineHeight: 1.45 }}
+                    style={{ ...S.taskText, fontSize: 13.5, lineHeight: 1.45, textDecoration: t.done ? "line-through" : "none" }}
                     aria-expanded={showing}
                   >
                     {t.important && <span style={{ color: "#C62A40", fontWeight: 800 }}>★ </span>}
@@ -255,18 +277,25 @@ export function TeamingTab({ block, families, familyById, tasks, today, board, o
       {[["For my supervision", forMine], ["For group supervision", forGroup]].map(([title, rows]) =>
         rows.length > 0 && (
           <div key={title}>
-            <div style={S.h2}>{title} ({rows.length})</div>
+            <div style={S.h2}>{title} ({rows.filter((t) => !t.done).length})</div>
             {rows.map((t) => {
               const f = t.client ? familyById.get(t.client) : null;
               return (
-                <div key={t.id} style={{ ...S.taskTop, borderBottom: `1px solid ${LINE}` }} className="handed">
+                <div
+                  key={t.id}
+                  data-row={t.id}
+                  style={{ ...S.taskTop, borderBottom: `1px solid ${LINE}` }}
+                  className={`handed${settle.isLeaving(t.id) ? " skmo-leaving" : ""}`}
+                >
                   <button
-                    onClick={() => board.toggle(t.id)}
-                    style={{ ...S.box, borderColor: f ? f.color : "#B9AECE" }}
+                    onClick={() => !t.done && tick(t, "Taken to supervision")}
+                    style={{ ...S.box, borderColor: f ? f.color : "#B9AECE", background: t.done ? (f ? f.color : "#B9AECE") : "transparent" }}
                     role="checkbox"
-                    aria-checked={false}
+                    aria-checked={!!t.done}
                     aria-label={`Mark taken to supervision: ${t.text}`}
-                  />
+                  >
+                    <span aria-hidden="true" className={t.done ? "skmo-check" : undefined}>{t.done ? "✓" : ""}</span>
+                  </button>
                   <span style={{ ...S.taskText, cursor: "default", fontSize: 13.5, lineHeight: 1.45 }}>
                     {f && <span style={{ fontWeight: 700 }}>{f.name} · </span>}
                     {t.text}
@@ -278,16 +307,21 @@ export function TeamingTab({ block, families, familyById, tasks, today, board, o
         )
       )}
 
-      {done.length > 0 && (
-        <>
-          <div style={S.h2}>Talked about ({done.length})</div>
-          {done.map((t) => {
+      {/* Where a ticked line goes. Tapping one puts it back on the list if it
+          needs another round. */}
+      {[["Talked about", done], ["Taken to supervision", supervised]].map(([title, rows]) => (
+        <Archive
+          key={title}
+          title={title}
+          rows={rows}
+          settle={settle}
+          render={(t) => {
             const f = t.client ? familyById.get(t.client) : null;
             return (
               <button
-                key={t.id}
-                onClick={() => board.toggle(t.id)}
-                style={{ ...S.dueRow, opacity: 0.5 }}
+                onClick={() => { board.toggle(t.id); onFlash?.("Back on the list"); }}
+                style={{ ...S.dueRow, opacity: 0.55 }}
+                aria-label={`Put back on the list: ${t.text}`}
               >
                 <span style={{ ...S.dot, width: 10, height: 10, marginTop: 5, background: f ? f.color : "#B9AECE" }} aria-hidden="true" />
                 <span style={{ ...S.dueText, textDecoration: "line-through" }}>
@@ -296,11 +330,11 @@ export function TeamingTab({ block, families, familyById, tasks, today, board, o
                 </span>
               </button>
             );
-          })}
-          <div style={{ ...S.tip, marginTop: 10 }}>
-            Tap one to put it back if it needs another round.
-          </div>
-        </>
+          }}
+        />
+      ))}
+      {done.length > 0 && (
+        <div style={{ ...S.tip, marginTop: 6 }}>Tap one to put it back if it needs another round.</div>
       )}
     </>
   );

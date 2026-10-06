@@ -24,6 +24,7 @@ import { useCalendar } from "./lib/useCalendar.js";
 import { detectFamily } from "./lib/parse.js";
 import { latestVisitByFamily, isEarlier, isTodo } from "./lib/current.js";
 import { paperworkSeeds, paperworkDue, isPaperwork } from "./lib/paperwork.js";
+import { doneAt } from "./lib/useSettle.js";
 
 const TABS = ["day", "families", "week", "texts", "print"];
 const TAB_LABELS = [["day", "Day"], ["families", "Families"], ["week", "Week"], ["texts", "Texts"], ["print", "Print"]];
@@ -131,6 +132,12 @@ export default function App({ caseload: loaded, onLock, crypto }) {
     () => paperworkDue(board.tasks, today).filter(inLane),
     [board.tasks, today, inLane]
   );
+  /* Ticked in the last fortnight: the Done list under the day's paperwork,
+     so a tick goes somewhere you can see, and back with a tap. */
+  const paperworkRecent = useMemo(() => {
+    const since = Date.now() - 14 * 86400000;
+    return board.tasks.filter((t) => isPaperwork(t) && t.done && doneAt(t) > since).filter(inLane);
+  }, [board.tasks, inLane]);
 
   /* Per-family open and overdue counts, computed once per change, and the
      paperwork each family has due, for the visit rows. */
@@ -474,6 +481,7 @@ export default function App({ caseload: loaded, onLock, crypto }) {
             detectFamily={detectFamily}
             overdue={overdue}
             paperwork={paperwork}
+            paperworkRecent={paperworkRecent}
             board={boardWithUndo}
             onOpenOverdue={() => { setOverdueOpen(true); setOpenId(null); }}
             onOpenTeaming={() => { setTeamingOpen(true); setOpenId(null); }}
