@@ -13,6 +13,9 @@
    list, into a folded section on the family. Nothing is deleted, and nothing
    anyone has worked on moves. */
 
+import { parseISO, daysBetween } from "./dates.js";
+import { isSupervision } from "../data/library.js";
+
 /* How far apart two notes have to be before the newer one replaces the older.
    Visits are weekly; two notes for the same family a day or two apart are
    nearly always two settings, a school observation and a home visit, each
@@ -20,7 +23,6 @@
    school ones are done. Four days still lets a visit moved to early the next
    week replace the one before it. */
 const REPLACES_AFTER_DAYS = 4;
-const daysBetween = (a, b) => (Date.parse(b) - Date.parse(a)) / 86_400_000;
 
 /* A note about one family: its title named them. A supervision prep names no
    family in its title, so it never counts as a family's latest visit, or it
@@ -57,5 +59,14 @@ export function isEarlier(t, latest) {
   if (t.source && t.fromVisit !== true) return false;
   const newest = latest.get(t.client);
   if (!newest) return false;
-  return !t.noted || daysBetween(t.noted, newest) >= REPLACES_AFTER_DAYS;
+  const noted = parseISO(t.noted || "");
+  return !noted || daysBetween(noted, parseISO(newest)) >= REPLACES_AFTER_DAYS;
 }
+
+/**
+ * A to-do as every list and count means it: not a prompt for supervision,
+ * not an earlier visit's untouched leftover, and not a paperwork step, which
+ * has its own place at the top of the day and of each family. One rule, so
+ * the day's count, a family's count and the past-due pile cannot disagree.
+ */
+export const isTodo = (t, latest) => !isSupervision(t) && !isEarlier(t, latest) && !t?.paper;

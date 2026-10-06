@@ -16,7 +16,7 @@ import path from "node:path";
 import { promisify } from "node:util";
 import { chromium } from "playwright";
 import { loadFixture } from "./fixture.mjs";
-import { LONG } from "../src/lib/dates.js";
+import { LONG, iso } from "../src/lib/dates.js";
 import { decryptJSON, decryptWithKey, encryptWithKey } from "../src/lib/crypto.js";
 import { writeToken } from "../src/lib/sync.js";
 
@@ -267,6 +267,14 @@ check(third === after, `and does not even write (revision still ${after})`);
   const b4 = await boardNow();
   check(live(b4.doc, `${item(40)}`).length === 1, "dropping it from one note keeps it while the other note still asks for it");
 
+  /* Writing the board directly, as a phone would. */
+  const putBoard = async (b, doc) =>
+    fetch(`${BASE}/api/board`, {
+      method: "PUT",
+      headers: { "content-type": "application/json", "x-skymo-token": await writeToken(b.key) },
+      body: JSON.stringify({ rev: b.rev, blob: JSON.stringify(await encryptWithKey(doc, b.key, b.salt)) }),
+    });
+
   /* From review: an item imported before notes were tracked has no visit
      date, which reads as older than every tracked note. When a newer note
      repeats it word for word, it has to take that note's date, or the
@@ -276,17 +284,21 @@ check(third === after, `and does not even write (revision still ${after})`);
   await writeFile(legacyFile, `${one.alias[0]}: Visit Notes\n\nBefore next visit\n☐\n${LEGACY}\n`);
   await run("node", ["scripts/import-sweep.mjs", legacyFile, "--site", BASE], { env });
   const b5 = await boardNow();
-  check(!live(b5.doc, `${item(50)}`)[0]?.[1].task.noted, "(an item arrives the old way, with no visit date)");
+  const [legacyId, legacyEntry] = live(b5.doc, `${item(50)}`)[0] || [];
+  check(legacyEntry?.task.noted === iso(new Date()), "an item brought in the old way is dated today, so it does not fold away as it lands");
+  /* The same item as one from before notes were tracked: no date at all. */
+  const undated = structuredClone(b5.doc);
+  const { noted: _n, ...bare } = undated.tasks[legacyId].task;
+  undated.tasks[legacyId] = { ...undated.tasks[legacyId], task: bare };
+  check((await putBoard(b5, undated)).ok, "(an item from before notes were tracked, with no visit date)");
   await write("d.txt", `driveD${tag} | 2026-09-25T01:00:00Z | ${one.alias[0]} Visit Notes 2026-09-25.docx`, visit([LEGACY], false));
   await sweep();
   const b6 = await boardNow();
   const legacyNow = live(b6.doc, `${item(50)}`);
   check(legacyNow.length === 1 && legacyNow[0][1].task.noted === "2026-09-25", "a newer note repeating it gives it that note's date instead of adding a copy");
 
-  /* A line someone has ticked, read again in new words. Item ids come from
-     the title, so a parser fix that trims titles differently (or a small
-     edit to the note) gives the same line a new id. Untouched, the old one
-     is simply replaced; ticked, it must not come back open beside it. */
+  /* A ticked line, and the note edited to say more about it. The edit is new
+     information: the open errand is added, and the ticked one stays ticked. */
   const GROW = `${item(60)} email the school counselor about the meeting.`;
   const GROWN = `${item(60)} email the school counselor about the meeting and the bus plan.`;
   const UNTOUCHED = `${item(61)} print the visual schedule for the fridge.`;
@@ -297,21 +309,51 @@ check(third === after, `and does not even write (revision still ${after})`);
   const growId = live(b7.doc, `${item(60)}`)[0]?.[0];
   const tick7 = structuredClone(b7.doc);
   tick7.tasks[growId] = { ...tick7.tasks[growId], task: { ...tick7.tasks[growId].task, done: true }, by: "mo", updatedAt: Date.now() };
-  const put7 = await fetch(`${BASE}/api/board`, {
-    method: "PUT",
-    headers: { "content-type": "application/json", "x-skymo-token": await writeToken(b7.key) },
-    body: JSON.stringify({ rev: b7.rev, blob: JSON.stringify(await encryptWithKey(tick7, b7.key, b7.salt)) }),
-  });
-  check(put7.ok, "(the other person ticks a line)");
+  check((await putBoard(b7, tick7)).ok, "(the other person ticks a line)");
   await write("e.txt", `driveE${tag} | 2026-09-26T02:00:00Z | ${two.alias[0]} Visit Notes 2026-09-26.docx`, visit([GROWN, UNTOUCHED2], false));
   await sweep();
   const b8 = await boardNow();
   const grown = live(b8.doc, `${item(60)}`);
-  check(grown.length === 1 && grown[0][0] === growId && grown[0][1].task.done === true, "a ticked line read again in new words stays ticked, and is not added a second time open");
+  const full8 = (e) => `${e.task.text} ${e.task.note || ""}`;
+  check(grown.some(([id, e]) => id === growId && e.task.done), "the ticked line stays ticked");
+  check(grown.some(([id, e]) => id !== growId && !e.task.done && has(full8(e), "bus plan")), "and the edited line, which says more, is added open rather than swallowed");
   const redone = live(b8.doc, `${item(61)}`);
   check(redone.length === 1 && has(redone[0][1].task.text, "the car"), "an untouched one is replaced by the new wording");
-  const ledger8 = Object.values(b8.doc.tasks).find((e) => e?.source?.id === `driveE${tag}`);
-  check(ledger8?.source.items.includes(growId), "and the note's record still counts the ticked line as its own");
+
+  /* A ticked line read again word for word, under a title an older parser
+     gave it. Its id comes from the title, so the new reading has a new id; it
+     must not come back open beside the ticked one. Set up as the older
+     parser would have left it: the ticked item under its old title and id,
+     and the note's record naming that id. */
+  const REWORD = `${item(62)} drop the library books back before the visit.`;
+  await write("f.txt", `driveF${tag} | 2026-09-27T01:00:00Z | ${two.alias[0]} Visit Notes 2026-09-27.docx`, visit([REWORD], false));
+  await sweep();
+  const b9 = await boardNow();
+  const [realId, real] = live(b9.doc, `${item(62)}`)[0] || [];
+  const oldId = `sweep_older${tag}`;
+  const older = structuredClone(b9.doc);
+  delete older.tasks[realId];
+  older.tasks[oldId] = { seed: false, task: { ...real.task, id: oldId, text: `${item(62)} drop the books`, note: real.task.note || REWORD.replace(/\.$/, ""), done: true }, by: "mo", updatedAt: Date.now() };
+  const ledgerF = Object.entries(older.tasks).find(([, e]) => e?.source?.id === `driveF${tag}`);
+  ledgerF[1].source = { ...ledgerF[1].source, items: [oldId] };
+  check((await putBoard(b9, older)).ok, "(a line an older parser titled differently, ticked)");
+  await write("f.txt", `driveF${tag} | 2026-09-27T02:00:00Z | ${two.alias[0]} Visit Notes 2026-09-27.docx`, visit([REWORD], false));
+  await sweep();
+  const b10 = await boardNow();
+  const reread = live(b10.doc, `${item(62)}`);
+  check(reread.length === 1 && reread[0][0] === oldId && reread[0][1].task.done, "the same words under a new title are the ticked line, not a second one open");
+
+  /* From review: an item with no family that another note still asks for
+     is not retired when a family's note brings the same line in. */
+  const SHAREDLINE = `${item(70)} confirm the van for the outing.`;
+  const prep2 = ["Reflective Supervision Prep: Week of 2026-09-28", "", "11\\. Logistics", "", "|  |  |", "| :-: | :-: |", `| ☐ | ${SHAREDLINE} |`].join("\n");
+  await write("g.txt", `driveG${tag} | 2026-09-28T01:00:00Z | Supervision Prep Week of 2026-09-28.docx`, prep2);
+  await sweep();
+  await write("h.txt", `driveH${tag} | 2026-09-29T01:00:00Z | ${one.alias[0]} Visit Notes 2026-09-29.docx`, visit([SHAREDLINE], false));
+  await sweep();
+  const b11 = await boardNow();
+  const both = live(b11.doc, `${item(70)}`);
+  check(both.some(([, e]) => !e.task.client) && both.some(([, e]) => e.task.client === one.id), "a line the prep still asks for stays, beside the family's own copy");
 }
 
 /* Now the half that matters to a person: is it there when the app opens? */

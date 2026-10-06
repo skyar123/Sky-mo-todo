@@ -5,8 +5,8 @@ import { Task, QuickAdd } from "./Task.jsx";
 import { SUPPLIES, KIND, ORDER, isSupervision } from "../data/library.js";
 import { LONG, iso, fmtShort, parseISO } from "../lib/dates.js";
 import { isScheduled } from "../lib/schedule.js";
-import { latestVisitByFamily, isEarlier } from "../lib/current.js";
-import { isPaperwork, paperworkDue } from "../lib/paperwork.js";
+import { latestVisitByFamily, isEarlier, isTodo } from "../lib/current.js";
+import { paperworkDue } from "../lib/paperwork.js";
 import { PaperRow } from "./Paperwork.jsx";
 import { LINE } from "../styles.js";
 
@@ -17,7 +17,7 @@ export function FamilyDetail({ c, tasks, families, familyById, supplies, drops, 
      in. Supervision prompts used to be counted as open tasks without being
      shown, and earlier leftovers made every family look like twenty jobs. */
   const latest = latestVisitByFamily(tasks);
-  const mine = all.filter((x) => !isSupervision(x) && !isEarlier(x, latest) && !isPaperwork(x));
+  const mine = all.filter((x) => isTodo(x, latest));
   /* What the case calendar asks of this family in the next two months, and
      what is already late. Further out is noise on a phone; when nothing is
      that close, the next step is shown so the page never says "nothing". */

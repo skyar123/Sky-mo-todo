@@ -196,11 +196,17 @@ const CLOCK_WORDS = [
  * kind that is owed now, or else the next one. Null when the item names no
  * step, or the family has no admission date.
  */
-export function clockDueFor(text, family, today) {
+export function clockDueFor(text, family, today, doneIds = new Set()) {
   const hit = CLOCK_WORDS.find(([re]) => re.test(String(text || "")));
   if (!hit) return null;
-  const steps = paperworkFor(family, today).filter((s) => s.track === hit[1] && !s.done);
-  return steps[0]?.due || null;
+  /* Ticked counts wherever it was ticked: in the caseload, or on the board
+     since. A line about a SNIFF that is done takes the next one's date, and
+     everything before the last ticked step is covered by it. */
+  const steps = paperworkFor(family, today).filter((s) => s.track === hit[1]);
+  const isDone = (s) => s.done || doneIds.has(s.id);
+  let last = -1;
+  steps.forEach((s, i) => { if (isDone(s)) last = i; });
+  return steps.find((s, i) => i > last && !isDone(s))?.due || null;
 }
 
 /**
@@ -209,11 +215,11 @@ export function clockDueFor(text, family, today) {
  * SNIFF in passing ("asked for across three SNIFF administrations") is not
  * SNIFF work.
  */
-export function datedByClock(tasks, families, today) {
+export function datedByClock(tasks, families, today, doneIds = new Set()) {
   const byId = new Map(families.map((f) => [f.id, f]));
   return tasks.map((t) => {
     if (t.due || !t.client || !byId.has(t.client)) return t;
-    const due = clockDueFor(t.text, byId.get(t.client), today);
+    const due = clockDueFor(t.text, byId.get(t.client), today, doneIds);
     return due ? { ...t, due } : t;
   });
 }

@@ -71,6 +71,7 @@ const check = (cond, good, why) => (cond ? ok(good) : bad(why || good));
   check(clockDueFor("Flag the 90-day treatment plan to Mo", fam, today) === "2026-08-23", "a plan item takes the plan step that is owed");
   check(clockDueFor("Call the school", fam, today) === null, "an item that names no step keeps no date");
   check(clockDueFor("Finish the SNIFF", { id: "f3" }, today) === null, "and without an admission date nothing is guessed");
+  check(clockDueFor("SNIFF scoring follow-up", fam, today, new Set([paperworkId("f1", "sniff1")])) === "2026-12-21", "a step ticked on the board counts: the line takes the next SNIFF's date");
 }
 
 /* --- the screen ----------------------------------------------------------- */

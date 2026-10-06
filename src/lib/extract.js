@@ -125,7 +125,7 @@ const NOT_A_FLAG = /\bnot (?:a |yet a )?(?:safety )?flag\b|\bno (?:safety )?flag
  * undefined when there is no label or it names nobody, so the caller keeps
  * the note's own family.
  */
-function familyFromLabel(line, families) {
+function familyFromLabel(line, families, { strict = false } = {}) {
   const m = String(line).match(/^\s*([^:]{2,40}):\s/);
   if (!m) return undefined;
   const label = m[1]
@@ -133,7 +133,11 @@ function familyFromLabel(line, families) {
     .replace(/\b(family|mom|mum|mother|dad|father|caregivers?|parents?|grandma|grandmother|home)\b/gi, "")
     .trim();
   if (!label) return undefined;
-  return detectFamily(label, families, { titles: true, fuzzy: true }) || undefined;
+  /* In a note whose family is already known, only a name the caseload holds
+     exactly can move a line to another family. A nickname trusted only in
+     titles, or a name one letter off, is a guess, and the note's own family
+     is the better one. */
+  return detectFamily(label, families, strict ? {} : { titles: true, fuzzy: true }) || undefined;
 }
 
 /* A run-on table cell. Drive exports a boxed paragraph as one cell with its
@@ -179,7 +183,11 @@ export function normaliseNoteText(text) {
       const label = cells[0].replace(CHECKBOX, "").trim();
       const rest = cells.slice(1).filter(Boolean).join(" ");
       if (label && rest) {
-        out.push(`${label}: ${rest}`);
+        /* Only when the boxed cell is a heading. A boxed to-do with its
+           detail beside it ("☐ Send the release to the school | by Friday")
+           stays a to-do, box and all, or it would read as a label nobody
+           opens and be lost. */
+        out.push(sectionFor(label) ? `${label}: ${rest}` : `☐ ${label}: ${rest}`);
         continue;
       }
     }
@@ -362,6 +370,21 @@ export function extractFromNote(text, { families, today, client: given } = {}) {
   const items = [];
   let section = null;
   let pending = null; // a checkbox on its own line, with the text below it
+  /* A section opened by a heading with its answer on the same line takes
+     checkbox lines after it, but not paragraphs: "Safety flags: none." is
+     answered, and the narrative that may follow it is not more of the answer. */
+  let inlineOpened = false;
+  /* After a part heading that is not a follow-up ("4. Therapeutic Threads",
+     "Abecedarian plan"), boxes are the note's own planning tables (Theme,
+     Game, Delivery), not to-dos. Nothing opened yet is different: a plain
+     list of boxes with no headings at all is still a list of to-dos. */
+  let stopped = false;
+  const open = (sec, inline = false) => {
+    section = sec;
+    pending = null;
+    inlineOpened = inline;
+    stopped = false;
+  };
 
   const push = (raw, sec, { split = false } = {}) => {
     const body = raw.replace(CHECKBOX, "").replace(BULLET, "").trim();
@@ -390,7 +413,7 @@ export function extractFromNote(text, { families, today, client: given } = {}) {
       /* "Bring to the clinical partner" is literally the teaming agenda. */
       agenda: !!sec?.agenda,
     };
-    const own = familyFromLabel(body, families);
+    const own = familyFromLabel(body, families, { strict: !!client });
     if (own !== undefined) item.client = own;
     items.push(item);
   };
@@ -422,7 +445,7 @@ export function extractFromNote(text, { families, today, client: given } = {}) {
           urgent: false,
           agenda: role === "team",
         };
-        const own = familyFromLabel(body, families);
+        const own = familyFromLabel(body, families, { strict: !!client });
         if (own !== undefined) item.client = own;
         items.push(item);
       }
@@ -432,8 +455,7 @@ export function extractFromNote(text, { families, today, client: given } = {}) {
 
     const nextSection = sectionFor(line);
     if (nextSection) {
-      section = nextSection;
-      pending = null;
+      open(nextSection);
       continue;
     }
 
@@ -444,10 +466,14 @@ export function extractFromNote(text, { families, today, client: given } = {}) {
        after is read as the first line under it. */
     const inline = line.match(/^\s*(?:\d+\.\s*)?([^:]{3,40}):\s+(\S.*)$/);
     if (inline && !CHECKBOX.test(line)) {
-      const opens = sectionFor(inline[1]);
+      /* "Safety: mom has put gates on the stairs" is narrative with a label,
+         not the note's safety answer, which always names itself as flags,
+         items, concerns or a check. On a line of its own, "Safety" is still
+         a heading. */
+      const bare = /^\s*safety\s*$/i.test(inline[1]);
+      const opens = !bare && sectionFor(inline[1]);
       if (opens) {
-        section = opens;
-        pending = null;
+        open(opens, true);
         push(inline[2], section, { split: true });
         continue;
       }
@@ -456,7 +482,10 @@ export function extractFromNote(text, { families, today, client: given } = {}) {
     if (STOP_SECTION.test(line) && !CHECKBOX.test(line)) {
       /* A numbered part heading ends the current list unless it is itself a
          Follow-Up heading, which sectionFor already caught. */
-      if (!/follow[- ]?up/i.test(line)) section = null;
+      if (!/follow[- ]?up/i.test(line)) {
+        section = null;
+        stopped = true;
+      }
       pending = null;
       continue;
     }
@@ -466,8 +495,7 @@ export function extractFromNote(text, { families, today, client: given } = {}) {
       /* A box on a heading, on a line of its own, is still the heading. */
       const opens = rest && sectionFor(rest);
       if (opens) {
-        section = opens;
-        pending = null;
+        open(opens);
         continue;
       }
       /* "☐ Bring to my clinical partner: the classroom climate..." sits in a
@@ -476,6 +504,7 @@ export function extractFromNote(text, { families, today, client: given } = {}) {
       const labelled = rest.match(/^([^:]{3,40}):\s+(\S.*)$/);
       const to = labelled && sectionFor(labelled[1]);
       if (to) push(labelled[2], to);
+      else if (stopped) continue;
       else if (rest) push(line, section);
       else pending = section; // bare checkbox; the text is on the next line
       continue;
@@ -494,7 +523,7 @@ export function extractFromNote(text, { families, today, client: given } = {}) {
        items that were most worth carrying to the clinician. A heading is a
        strong enough signal on its own; the length bar keeps stray fragments
        out. */
-    if (section && line.trim().length > 24) {
+    if (section && !inlineOpened && line.trim().length > 24) {
       push(line, section, { split: true });
     }
   }

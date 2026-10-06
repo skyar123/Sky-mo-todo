@@ -358,6 +358,16 @@ check(
   const still = extractFromSource({ title: "Probe Visit Notes.docx", text: "Safety flags: Mom disclosed a new worry about the neighbour. No other concerns.", families: fams, today }).items;
   check(still.length === 1 && still[0].urgent, "but \"No other concerns\" after a disclosure leaves the disclosure a red flag");
 
+  /* From review: four ways a note could put the wrong thing on the board. */
+  const narrative = extractFromSource({ title: "Probe Visit Notes.docx", text: ["5\\. Follow-Up", "Safety: Mom has put gates on the stairs and covered the outlets.", "The child played with blocks for most of the hour and named two feelings."].join("\n"), families: fams, today }).items;
+  check(!narrative.some((i) => i.urgent), "\"Safety: ...\" in narrative is not a safety answer, and the lines after it are not flags");
+  const boxedTodo = extractFromSource({ title: "Probe Visit Notes.docx", text: ["5\\. Follow-Up", "|  |  |", "| :-: | :-: |", "| ☐ Send the release to the school | by Friday |"].join("\n"), families: fams, today }).items;
+  check(boxedTodo.length === 1 && /^Send the release to the school$/.test(boxedTodo[0].text), "a boxed to-do with its detail beside it stays a to-do");
+  const plan = extractFromSource({ title: "Probe Visit Notes.docx", text: ["Abecedarian plan for next visit", "|  |  |", "| :-: | :-: |", "| ☐ Theme | III. Strengthen family relationships through the animal play. |", "| ☐ Delivery | Notice, nudge, narrate, then hand it to mom. |", "| ☐ Success looks like | Mom narrates one turn without directing. |", "5\\. Follow-Up", "☐ Bring the CESD with a paper copy."].join("\n"), families: fams, today }).items;
+  check(plan.length === 1 && /CESD/.test(plan[0].text), `a note's own planning table is not a list of to-dos (${plan.length})`);
+  const other = extractFromSource({ title: "Other Visit Notes 2026-09-23.docx", text: ["5\\. Follow-Up", "☐ Teal: confirm the office booking for next week."].join("\n"), families: fams, today }).items;
+  check(other[0]?.client === "f2", "in a family's own note, a label that is another family's title-only nickname does not move the line");
+
   /* A prep line with a topic for a label names its family after it. */
   const PREP2 = ["11\\. Logistics", "|  |  |", "| :-: | :-: |", "| ☐ | Lead exposure: Rosalind's labs pending; check in Thursday. |", "| ☐ | Screening: ask both Probe and Other about the new form. |"].join("\n");
   const p2 = extractFromSource({ title: "Supervision Prep Week of 2026-09-21.docx", text: PREP2, families: fams, today }).items;

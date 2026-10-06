@@ -34,33 +34,17 @@
 import { readFile, readdir } from "node:fs/promises";
 import path from "node:path";
 import { createHash } from "node:crypto";
-import { decryptJSON, decryptWithKey, encryptWithKey } from "../src/lib/crypto.js";
+import { decryptWithKey, encryptWithKey } from "../src/lib/crypto.js";
 import { writeToken } from "../src/lib/sync.js";
 import { mergeShared } from "../src/lib/shared.js";
 import { extractFromDoc, extractFromSource, itemsToTasks } from "../src/lib/extract.js";
 import { datedByClock } from "../src/lib/paperwork.js";
+import { iso } from "../src/lib/dates.js";
+import { parseArgs, siteOf, openCaseload } from "./lib/caseload.mjs";
 
-const TAKES_VALUE = new Set(["--site", "--endpoint", "--caseload", "--notes"]);
-const opts = {};
-const loose = [];
-for (let i = 0; i < process.argv.length - 2; i++) {
-  const a = process.argv[i + 2];
-  if (TAKES_VALUE.has(a)) { opts[a] = process.argv[i + 3]; i++; continue; }
-  if (a.startsWith("--")) { opts[a] = true; continue; }
-  loose.push(a);
-}
-
-const SITE = opts["--site"] || "https://sky-mo-caseload.netlify.app";
+const { opts, loose } = parseArgs(process.argv.slice(2), ["--site", "--endpoint", "--caseload", "--notes"]);
+const SITE = siteOf(opts);
 const ENDPOINT = opts["--endpoint"] || `${SITE}/api/board`;
-/* The families and their names come from the copy of the caseload that sits
-   beside this script, not from the deployed site. They used to come from the
-   site, which meant a name added to the caseload did nothing for the sweep
-   until the next deploy; and a deploy can be stuck for days. The routine
-   clones this repository fresh on every run, so reading the file next door
-   means a new name reaches the sweep the moment it is committed. Passing
-   --caseload (a URL or a path) still overrides it. */
-const CASELOAD = opts["--caseload"] || (opts["--site"] ? `${SITE}/caseload.enc.json` : null);
-const LOCAL_CASELOAD = new URL("../public/caseload.enc.json", import.meta.url);
 const DRY = !!opts["--dry"];
 const NOTES = opts["--notes"];
 const RETRIES = 4;
@@ -69,7 +53,7 @@ const RETRIES = 4;
    imported under an older version is read again, and what the new reading no
    longer finds is retired, so a parser fix reaches notes already on the board
    instead of only the next week's. */
-const PARSER = 5;
+const PARSER = 6;
 
 if (!NOTES && !loose[0]) {
   console.error("usage: node import-sweep.mjs --notes <dir> [--dry]\n   or: node import-sweep.mjs <doc.txt> [--dry]");
@@ -82,20 +66,12 @@ if (!passcode) {
   process.exit(2);
 }
 
-/* The caseload is the same encrypted payload the app loads, so the families
-   and their names are read from the one file that holds them. */
-async function loadCaseload() {
-  if (CASELOAD && /^https?:\/\//.test(CASELOAD)) {
-    const res = await fetch(CASELOAD, { cache: "no-store" });
-    if (!res.ok) throw new Error(`could not read the caseload: ${res.status}`);
-    return res.json();
-  }
-  return JSON.parse(await readFile(CASELOAD || LOCAL_CASELOAD, "utf8"));
-}
-const enc = await loadCaseload();
-const { data, key } = await decryptJSON(enc, passcode);
+/* The families and their names come from the copy of the caseload that sits
+   beside this script, not from the deployed site (see scripts/lib/caseload.mjs). */
+const { enc, data, key } = await openCaseload(opts, passcode);
 const families = data.families;
 const salt = enc.salt;
+const today = new Date();
 const familyName = (id) => families.find((f) => f.id === id)?.name || "no family";
 
 /* Same id for the same item, so a second reading of the same words is a
@@ -117,8 +93,11 @@ const ledgerId = (sourceId) => "src_" + hash(sourceId);
 async function readSources() {
   if (!NOTES) {
     const text = await readFile(loose[0], "utf8");
-    const { items, families: blocks } = extractFromDoc(text, { families, today: new Date() });
-    const tasks = datedByClock(itemsToTasks(items, { client: null }), families, new Date()).map((t) => ({ ...t, id: idFor(t) }));
+    const { items, families: blocks } = extractFromDoc(text, { families, today });
+    /* Dated today: an item with no visit date reads as older than every
+       tracked note, and would fold away as an earlier visit's leftover the
+       moment it landed. */
+    const tasks = itemsToTasks(items, { client: null }).map((t) => ({ ...t, id: idFor(t), noted: iso(today) }));
     return [{ source: null, title: path.basename(loose[0]), tasks, blocks }];
   }
 
@@ -133,15 +112,12 @@ async function readSources() {
       continue;
     }
     const [, id, modified, title] = m;
-    const { client: noteFamily, items } = extractFromSource({ title, text: rest.join("\n"), families, today: new Date() });
+    const { client: noteFamily, items } = extractFromSource({ title, text: rest.join("\n"), families, today });
     /* When the visit was, as a day: the date in the title where there is one,
        since editing an old note later changes when it was modified but not
        which visit it was about. The day it was last changed otherwise. */
     const noted = (title.match(/\d{4}-\d{2}-\d{2}/) || [String(modified).slice(0, 10)])[0];
-    /* A line asking for the SNIFF, the HOPE or a plan review takes that
-       step's date from the family's admission clock, so it sorts with the
-       paperwork instead of sinking among the undated errands. */
-    const tasks = datedByClock(itemsToTasks(items, { client: null }), families, new Date()).map((t) => ({
+    const tasks = itemsToTasks(items, { client: null }).map((t) => ({
       ...t,
       id: idFor(t),
       source: id,
@@ -212,21 +188,20 @@ const untouched = (e) => e && !e.deleted && e.by === "sweep" && !e.task?.done;
 const READ_FIELDS = ["kind", "lane", "agenda", "urgent", "note", "due", "forum", "source", "noted", "fromVisit"];
 const differs = (a, b) => READ_FIELDS.some((k) => JSON.stringify(a?.[k] ?? null) !== JSON.stringify(b?.[k] ?? null));
 
-/* The same line of a note, read in new words. Titles are the first words of
-   a line, trimmed for a phone, and an item's id comes from its title, so a
-   parser fix or a small edit to the note that changes how a title is trimmed
-   makes a new id for a line already on the board. For an untouched item that
-   is harmless: the old one is retired and the new one takes its place. For
-   one someone has ticked or worked on it is not: the line would come back
-   open, or sit on the board twice. So a new reading whose full wording starts
-   with the title of an item someone worked on is taken to be that item. */
+/* The same line of a note, read in new words. An item's id comes from its
+   title, and titles are trimmed for a phone, so a parser fix that trims them
+   differently gives a line already on the board a new id. For an untouched
+   item that is harmless: the old one is retired and the new one takes its
+   place. For one someone has ticked or worked on it is not: the line would
+   come back open, or sit on the board twice. So a reading whose full wording
+   is exactly the wording of an item someone worked on is taken to be that
+   item. Only exactly: a line edited to say more ("...about the IEP meeting,
+   moved to the 12th") is new information and is added. */
 const norm = (x) => String(x || "").toLowerCase().replace(/\s+/g, " ").trim();
 function sameLine(was, t) {
   if (!was || (was.client || null) !== (t.client || null)) return false;
-  const old = norm(was.text);
-  if (old.length < 12) return false;
-  const body = norm(t.note || t.text);
-  return body.startsWith(old) || (!!was.note && norm(was.note) === body);
+  const old = norm(was.note || was.text);
+  return old.length >= 12 && old === norm(t.note || t.text);
 }
 
 function plan(remote) {
@@ -240,6 +215,14 @@ function plan(remote) {
   /* Which notes this run actually reads: a version already read by this
      parser is skipped whole. However its text comes out this time, it was
      imported once, and once is the whole point. */
+  /* A line asking for the SNIFF, the HOPE or a plan review takes that
+     step's date from the family's admission clock, so it sorts with the
+     paperwork instead of sinking among the undated errands. Steps already
+     ticked on the board count, so a line about a SNIFF that is done is not
+     dated to it. */
+  const doneSteps = new Set(Object.entries(tasksOn).filter(([id, e]) => id.startsWith("pw_") && e?.done).map(([id]) => id));
+  for (const s of sources) s.tasks = datedByClock(s.tasks, families, today, doneSteps);
+
   const reading = sources.filter((s) => {
     if (!s.source) return true;
     const prior = tasksOn[ledgerId(s.source.id)]?.source;
@@ -311,7 +294,7 @@ function plan(remote) {
          stay behind as a duplicate. Retire it, if nobody has touched it. */
       if (t.client) {
         const strandedId = idFor({ ...t, client: null });
-        if (strandedId !== t.id && untouched(tasksOn[strandedId]) && !tasksOn[strandedId].task?.client) {
+        if (strandedId !== t.id && !claimed.has(strandedId) && untouched(tasksOn[strandedId]) && !tasksOn[strandedId].task?.client) {
           retire(strandedId);
           report.adopted++;
         }

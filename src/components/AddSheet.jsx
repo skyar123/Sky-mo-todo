@@ -14,7 +14,7 @@ const looksLikeNote = (t) =>
   /[\u{1F64B}\u{1F465}\u{1F310}]/u.test(t) ||
   t.length > 900;
 
-export function AddSheet({ families, today, close, add, flash }) {
+export function AddSheet({ families, today, close, add, flash, doneSteps }) {
   const [txt, setTxt] = useState("");
   const [cid, setCid] = useState("");
   const [lane, setLane] = useState("both");
@@ -47,7 +47,7 @@ export function AddSheet({ families, today, close, add, flash }) {
       }
       /* Picking a family by hand overrides what each block said it was. */
       const items = cid ? chosen.map((i) => ({ ...i, client: cid })) : chosen;
-      add(datedByClock(itemsToTasks(items, { client: cid || parsed.client }), families, today));
+      add(datedByClock(itemsToTasks(items, { client: cid || parsed.client }), families, today, doneSteps));
       flash(`${chosen.length} added`);
       close();
       return;

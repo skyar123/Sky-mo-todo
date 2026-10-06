@@ -12,21 +12,13 @@
    Run as:  node report-paperwork.mjs [--days 14] [--site URL] [--caseload PATH|URL]
 */
 
-import { readFile } from "node:fs/promises";
-import { decryptJSON, decryptWithKey } from "../src/lib/crypto.js";
+import { decryptWithKey } from "../src/lib/crypto.js";
 import { fromShared } from "../src/lib/shared.js";
 import { paperworkSeeds, paperworkDue } from "../src/lib/paperwork.js";
 import { startOfDay, daysBetween, parseISO } from "../src/lib/dates.js";
+import { parseArgs, siteOf, openCaseload, readBoard } from "./lib/caseload.mjs";
 
-const TAKES_VALUE = new Set(["--site", "--caseload", "--days"]);
-const opts = {};
-for (let i = 2; i < process.argv.length; i++) {
-  const a = process.argv[i];
-  if (TAKES_VALUE.has(a)) { opts[a] = process.argv[++i]; continue; }
-  if (a.startsWith("--")) opts[a] = true;
-}
-
-const SITE = opts["--site"] || "https://sky-mo-caseload.netlify.app";
+const { opts } = parseArgs(process.argv.slice(2), ["--site", "--caseload", "--days"]);
 const DAYS = Number(opts["--days"] || 14);
 const passcode = process.env.SKYMO_PASSCODE;
 if (!passcode) {
@@ -34,19 +26,19 @@ if (!passcode) {
   process.exit(2);
 }
 
-/* The repository's caseload by default, as the importer reads it: the
-   admission dates are there as soon as they are committed, before the site
-   has been deployed again. */
-const CASELOAD = opts["--caseload"] || (opts["--site"] ? `${SITE}/caseload.enc.json` : null);
-const enc = CASELOAD && /^https?:\/\//.test(CASELOAD)
-  ? await (await fetch(CASELOAD, { cache: "no-store" })).json()
-  : JSON.parse(await readFile(CASELOAD || new URL("../public/caseload.enc.json", import.meta.url), "utf8"));
-const { data, key } = await decryptJSON(enc, passcode);
-
+const { data, key } = await openCaseload(opts, passcode);
 const today = startOfDay();
 const seeds = [...(data.seedTasks || []), ...paperworkSeeds(data.families, today)];
-const res = await (await fetch(`${SITE}/api/board`, { cache: "no-store" })).json();
-const doc = res.blob ? await decryptWithKey(JSON.parse(res.blob), key) : { tasks: {} };
+/* Without the board there is no knowing what has been ticked, and a list of
+   every step as owed would be wrong in the loudest possible way. Stop and
+   say so instead. */
+let doc;
+try {
+  doc = (await readBoard(`${siteOf(opts)}/api/board`, key, decryptWithKey)).doc || { tasks: {} };
+} catch (err) {
+  console.log(`PAPERWORK\n\nThe board could not be read (${err.message}), so what has been ticked is unknown. No list this time.`);
+  process.exit(1);
+}
 const { tasks } = fromShared(doc, seeds);
 
 const name = (id) => data.families.find((f) => f.id === id)?.name || id;

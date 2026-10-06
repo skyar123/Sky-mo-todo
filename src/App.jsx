@@ -22,8 +22,7 @@ import { resolveToday, addDays, iso, dueInfo } from "./lib/dates.js";
 import { liveAgendaFor, visitsToText, upcomingTextDays } from "./lib/schedule.js";
 import { useCalendar } from "./lib/useCalendar.js";
 import { detectFamily } from "./lib/parse.js";
-import { isSupervision } from "./data/library.js";
-import { latestVisitByFamily, isEarlier } from "./lib/current.js";
+import { latestVisitByFamily, isEarlier, isTodo } from "./lib/current.js";
 import { paperworkSeeds, paperworkDue, isPaperwork } from "./lib/paperwork.js";
 
 const TABS = ["day", "families", "week", "texts", "print"];
@@ -124,7 +123,7 @@ export default function App({ caseload: loaded, onLock, crypto }) {
      it is kept out of these: counted twice, it would also be buried twice,
      in the past-due pile and among the week's errands. */
   const laneTasks = useMemo(
-    () => board.openTasks.filter((t) => !isSupervision(t) && !isEarlier(t, latest) && !isPaperwork(t)).filter(inLane),
+    () => board.openTasks.filter((t) => isTodo(t, latest)).filter(inLane),
     [board.openTasks, inLane, latest]
   );
   /* Late, due within a fortnight, or open for starting, in date order. */
@@ -553,6 +552,7 @@ export default function App({ caseload: loaded, onLock, crypto }) {
           close={() => setAddOpen(false)}
           add={board.add}
           flash={flash}
+          doneSteps={new Set(board.tasks.filter((t) => isPaperwork(t) && t.done).map((t) => t.id))}
         />
       )}
 

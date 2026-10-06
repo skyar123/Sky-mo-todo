@@ -16,17 +16,12 @@
    Also forgets which notes were read in that stretch, so the next sweep reads
    them again instead of skipping them as already done. */
 
-import { readFile } from "node:fs/promises";
-import { decryptJSON, decryptWithKey, encryptWithKey } from "../src/lib/crypto.js";
+import { decryptWithKey, encryptWithKey } from "../src/lib/crypto.js";
 import { writeToken } from "../src/lib/sync.js";
 import { mergeShared } from "../src/lib/shared.js";
+import { parseArgs, siteOf, openCaseload, readBoard } from "./lib/caseload.mjs";
 
-const opts = {};
-for (let i = 2; i < process.argv.length; i++) {
-  const a = process.argv[i];
-  if (["--since", "--site", "--caseload"].includes(a)) { opts[a] = process.argv[++i]; continue; }
-  if (a.startsWith("--")) opts[a] = true;
-}
+const { opts } = parseArgs(process.argv.slice(2), ["--since", "--site", "--caseload"]);
 
 const since = Date.parse(opts["--since"] || "");
 if (!Number.isFinite(since)) {
@@ -39,30 +34,26 @@ if (!passcode) {
   process.exit(2);
 }
 
-const SITE = opts["--site"] || "https://sky-mo-caseload.netlify.app";
-const ENDPOINT = `${SITE}/api/board`;
-/* The key comes from the same place import-sweep takes it from, so the two
-   can never disagree about which board they are opening: --caseload if given,
-   the site's copy when pointed at another site, the repository's otherwise. */
-const CASELOAD = opts["--caseload"] || (opts["--site"] ? `${SITE}/caseload.enc.json` : null);
-const enc = CASELOAD && /^https?:\/\//.test(CASELOAD)
-  ? await (await fetch(CASELOAD, { cache: "no-store" })).json()
-  : JSON.parse(await readFile(CASELOAD || new URL("../public/caseload.enc.json", import.meta.url), "utf8"));
-const { key } = await decryptJSON(enc, passcode);
+const ENDPOINT = `${siteOf(opts)}/api/board`;
+/* The key comes from the same place every script takes it from
+   (scripts/lib/caseload.mjs), so they cannot disagree about which board they
+   are opening. */
+const { enc, key } = await openCaseload(opts, passcode);
 
-const res = await fetch(ENDPOINT, { cache: "no-store" });
-if (!res.ok) throw new Error(`pull ${res.status}`);
-const { rev, blob } = await res.json();
-if (!blob) {
-  console.log("The board is empty. Nothing to do.");
-  process.exit(0);
-}
+let rev;
 let remote;
 try {
-  remote = await decryptWithKey(JSON.parse(blob), key);
-} catch {
+  const board = await readBoard(ENDPOINT, key, decryptWithKey);
+  rev = board.rev;
+  remote = board.doc;
+} catch (err) {
+  if (/could not read the board/.test(err.message)) throw err;
   console.error("The board cannot be opened with this caseload's key. Nothing was written.");
   process.exit(1);
+}
+if (!remote) {
+  console.log("The board is empty. Nothing to do.");
+  process.exit(0);
 }
 
 const stamp = Date.now();
