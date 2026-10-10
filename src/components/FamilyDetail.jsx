@@ -93,6 +93,7 @@ export function FamilyDetail({ c, tasks, families, familyById, supplies, drops, 
           <div style={S.h1}>{c.name}</div>
           <div style={S.sub}>
             {c.child}{c.child && " · "}{where} · with {c.clinician}
+            {latest.get(c.id) && <> · last note {fmtShort(parseISO(latest.get(c.id)))}</>}
           </div>
         </div>
       </div>

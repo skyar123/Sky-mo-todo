@@ -39,6 +39,19 @@ export function latestVisitByFamily(tasks) {
   return latest;
 }
 
+/* Visits are weekly and the sweep reads Drive twice a week, so a board whose
+   newest note is more than a week and a day old has stopped hearing about
+   visits: either there were none, or notes are being saved where the sweep
+   cannot see them. Both are worth a line on the day screen. */
+export const NOTES_QUIET_DAYS = 8;
+
+/** The newest note the sweep has read, visit or supervision prep (YYYY-MM-DD). */
+export function newestNote(tasks) {
+  let newest = null;
+  for (const t of tasks) if (t?.source && t.noted && (!newest || t.noted > newest)) newest = t.noted;
+  return newest;
+}
+
 /**
  * True when a task is an earlier visit's leftover.
  *

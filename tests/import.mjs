@@ -16,7 +16,8 @@ import path from "node:path";
 import { promisify } from "node:util";
 import { chromium } from "playwright";
 import { loadFixture } from "./fixture.mjs";
-import { LONG, iso } from "../src/lib/dates.js";
+import { LONG, iso, daysBetween, parseISO } from "../src/lib/dates.js";
+import { newestNote, NOTES_QUIET_DAYS } from "../src/lib/current.js";
 import { decryptJSON, decryptWithKey, encryptWithKey } from "../src/lib/crypto.js";
 import { writeToken } from "../src/lib/sync.js";
 
@@ -401,6 +402,24 @@ for (const f of picked) {
 
 await page.click('button:has-text("Day")');
 await page.waitForTimeout(500);
+
+/* The day screen says when the newest note the sweep read is over a week old,
+   and stays quiet otherwise. Which one it should be depends on the day the
+   suite runs, so the expectation is worked out from the board itself. */
+{
+  const enc = JSON.parse(await readFile(new URL("../public/caseload.enc.json", import.meta.url), "utf8"));
+  const { key } = await decryptJSON(enc, process.env.SKYMO_PASSCODE);
+  const doc = await decryptWithKey(JSON.parse((await (await fetch(`${BASE}/api/board`)).json()).blob), key);
+  const newest = newestNote(Object.values(doc.tasks).filter((e) => e && !e.deleted && e.task).map((e) => e.task));
+  const quiet = !!newest && daysBetween(parseISO(newest), fx.today) > NOTES_QUIET_DAYS;
+  const shown = await page.locator("[data-quiet-notes]").count();
+  check(
+    shown === (quiet ? 1 : 0),
+    quiet ? `the day screen says the newest note is from ${newest}, over a week ago` : "the day screen does not cry wolf about a recent note",
+    `newest note ${newest}, line shown ${shown}`
+  );
+}
+
 await page.locator('button[aria-label="Open the teaming agenda"]').first().click();
 await page.waitForSelector('input[aria-label="Add something to bring up at teaming"]', { timeout: 8000 });
 const agenda = await page.textContent("main");

@@ -441,6 +441,11 @@ check(
   /* Two notes two days apart are usually two settings (a school observation
      and a home visit), not one visit replacing another. */
   check(earlier("sameweek") === false, "a note from two days before the latest stays current");
+
+  /* The day screen says when the board last heard about a visit. */
+  const { newestNote } = await import("../src/lib/current.js");
+  check(newestNote(tasks) === "2026-09-25", "the newest note read counts supervision preps too");
+  check(newestNote([{ id: "u1", noted: "2026-10-01" }]) === null, "an item added by hand is not a note the sweep read");
 }
 
 /* --- headings that are not headings -------------------------------------

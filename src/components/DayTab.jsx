@@ -1,8 +1,9 @@
-import React from "react";
+import React, { useMemo } from "react";
 import { S } from "../styles.js";
 import { VisitRow } from "./bits.jsx";
 import { pillStyle } from "./Task.jsx";
-import { LONG, fmtDay, dueInfo, spokenDate, addDays } from "../lib/dates.js";
+import { LONG, fmtDay, dueInfo, spokenDate, addDays, fmtShort, parseISO, daysBetween } from "../lib/dates.js";
+import { newestNote, NOTES_QUIET_DAYS } from "../lib/current.js";
 import { agendaFor, liveAgendaFor } from "../lib/schedule.js";
 import { buildICS, downloadICS, icsFilename } from "../lib/ics.js";
 import { handoffMessage } from "../lib/handoff.js";
@@ -110,6 +111,11 @@ export function DayTab({ caseload, today, counts, supplies, soon, openCount, uns
     .flat()
     .some((i) => isTeamingBlock(i));
 
+  /* When the sweep last brought a note in. Silence from it looks exactly
+     like a quiet week, so after a week and a day it says so. */
+  const lastNote = useMemo(() => newestNote(board?.tasks || []), [board?.tasks]);
+  const noteAge = lastNote ? daysBetween(parseISO(lastNote), today) : null;
+
   /* One row, wherever it falls in the week. */
   const rowsFor = (items, keyPrefix) =>
     items.map((item, i) =>
@@ -161,6 +167,14 @@ export function DayTab({ caseload, today, counts, supplies, soon, openCount, uns
         <div style={{ ...S.tip, marginTop: -6, marginBottom: 12 }}>
           This phone is not reading a calendar, so these are the standing times.
           Connect one under Sharing and backup to see the real ones.
+        </div>
+      )}
+
+      {noteAge !== null && noteAge > NOTES_QUIET_DAYS && (
+        <div data-quiet-notes style={{ ...S.tip, marginTop: -6, marginBottom: 12 }}>
+          The newest visit note on the board is from {fmtShort(parseISO(lastNote))}, {noteAge} days ago.
+          If you have written notes since, the sweep has not found them: it reads your own Drive on
+          Sunday and Wednesday evenings.
         </div>
       )}
 
