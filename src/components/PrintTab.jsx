@@ -13,7 +13,7 @@ function whoOptions(me) {
   return [["sky", "Skylar's list"], ["mo", "Mo's list"], ["all", "Everything"]];
 }
 
-export function PrintTab({ families, openTasks, supplies, today, weekStart, me, teamingLabel, flash }) {
+export function PrintTab({ families, openTasks, paperwork = [], supplies, today, weekStart, me, teamingLabel, flash }) {
   const [who, setWho] = useState(() => (me === "mo" ? "mo" : "sky"));
   const rows = openTasks.filter((x) => who === "all" || x.lane === who || x.lane === "both");
 
@@ -28,6 +28,10 @@ export function PrintTab({ families, openTasks, supplies, today, weekStart, me, 
     byDay[k].sort((a, b) => timeKey(a.c.time) - timeKey(b.c.time));
   }
   const loose = rows.filter((x) => !x.client);
+  /* Paperwork heads the sheet: it is what has a date nobody else will
+     remember, and it was the one thing a printed week left off. */
+  const papers = paperwork.filter((x) => who === "all" || x.lane === who || x.lane === "both");
+  const late = (x) => (dueInfo(x.due, today)?.days ?? 0) < 0;
   /* The agenda goes first: this sheet gets carried into the meeting. */
   const agenda = openTasks.filter((x) => x.agenda);
   const title = who === "mo" ? "Mo" : who === "sky" ? "Skylar" : "Skylar and Mo";
@@ -66,8 +70,29 @@ export function PrintTab({ families, openTasks, supplies, today, weekStart, me, 
           <div style={S.sheetTitle}>{title} · week of {fmtDay(weekStart)}</div>
           <div style={S.sheetSub}>
             Child First · {printedFor} · {rows.length + loose.length === 0 ? "nothing open" : `${rows.length} open`}
+            {papers.length ? ` · ${papers.length} paperwork` : ""}
           </div>
         </div>
+
+        {papers.length > 0 && (
+          <div style={S.sheetDay} data-print-paperwork>
+            <div style={S.sheetDayName}>Paperwork owed</div>
+            {papers.map((x) => {
+              const f = families.find((c) => c.id === x.client);
+              const di = dueInfo(x.due, today);
+              return (
+                <div key={`pw-${x.id}`} style={S.sheetRow}>
+                  <span style={S.sheetBox} />
+                  <span>
+                    {f ? <strong>{f.name}: </strong> : ""}
+                    {x.text}
+                    {di ? `  (${late(x) ? "LATE" : "due"} ${di.label})` : ""}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        )}
 
         {agenda.length > 0 && (
           <div style={S.sheetDay}>

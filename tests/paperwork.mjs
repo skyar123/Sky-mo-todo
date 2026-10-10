@@ -146,6 +146,15 @@ const check = (cond, good, why) => (cond ? ok(good) : bad(why || good));
     await page.waitForTimeout(500);
     const fam = await page.textContent("main");
     check(/Paperwork/.test(fam) && /Admitted/.test(fam), "each family shows its paperwork and the date it counts from");
+
+    /* The printed week starts with the paperwork, for whoever it is printed for. */
+    await page.click('button:has-text("Print")');
+    await page.waitForSelector("[data-print-paperwork]", { timeout: 8000 }).catch(() => {});
+    const printed = await page.$$eval("[data-print-paperwork] > div:not(:first-child)", (els) => els.length).catch(() => 0);
+    const forSky = expected.filter((t) => t.lane === "sky" || t.lane === "both").length;
+    check(printed === forSky, `the printed sheet opens with the paperwork owed (${printed} of ${forSky})`);
+    const sheet = await page.textContent(".sheet");
+    check(sheet.indexOf("Paperwork owed") >= 0 && sheet.indexOf("Paperwork owed") < (sheet.indexOf("To bring up") + 1 || Infinity), "above everything else on the sheet");
     await browser.close();
   }
 }

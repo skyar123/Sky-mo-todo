@@ -128,10 +128,8 @@ export default function App({ caseload: loaded, onLock, crypto }) {
     [board.openTasks, inLane, latest]
   );
   /* Late, due within a fortnight, or open for starting, in date order. */
-  const paperwork = useMemo(
-    () => paperworkDue(board.tasks, today).filter(inLane),
-    [board.tasks, today, inLane]
-  );
+  const paperworkAll = useMemo(() => paperworkDue(board.tasks, today), [board.tasks, today]);
+  const paperwork = useMemo(() => paperworkAll.filter(inLane), [paperworkAll, inLane]);
   /* Ticked in the last fortnight: the Done list under the day's paperwork,
      so a tick goes somewhere you can see, and back with a tap. */
   const paperworkRecent = useMemo(() => {
@@ -514,6 +512,7 @@ export default function App({ caseload: loaded, onLock, crypto }) {
             tasks={board.tasks}
             families={families}
             today={today}
+            openCount={laneTasks.length}
             onOpenFamily={goFamily}
           />
         )}
@@ -537,6 +536,7 @@ export default function App({ caseload: loaded, onLock, crypto }) {
           <PrintTab
             families={families}
             openTasks={laneTasks}
+            paperwork={paperworkAll}
             supplies={board.supplies}
             today={today}
             weekStart={weekStartOf(today)}
