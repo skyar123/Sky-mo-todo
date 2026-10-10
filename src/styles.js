@@ -171,5 +171,23 @@ export const CSS = `
     .noprint { display: none !important; }
     .sheet { border: none !important; border-radius: 0 !important; padding: 0 !important; margin: 0 !important; }
   }
+  /* Ticking something off. It used to vanish on the tap, which reads as the
+     app losing it. Now the box fills and the check pops, the row holds for a
+     beat, fades slowly and folds away, and then glides into the Done list at
+     the bottom, where a tap brings it back. */
+  @keyframes skmo-pop { 0% { transform: scale(.3); } 60% { transform: scale(1.25); } 100% { transform: scale(1); } }
+  @keyframes skmo-leave {
+    0%, 30% { opacity: 1; max-height: 220px; }
+    85% { opacity: .12; max-height: 220px; }
+    100% { opacity: 0; max-height: 0; padding-top: 0; padding-bottom: 0; border-bottom-width: 0; }
+  }
+  @keyframes skmo-glow { 0% { background: #DDF2E6; } 100% { background: transparent; } }
+  .skmo-check { display: inline-block; animation: skmo-pop .38s cubic-bezier(.2,.9,.3,1.4); }
+  .skmo-leaving { animation: skmo-leave 1.4s ease-in forwards; overflow: hidden; pointer-events: none; }
+  .skmo-arrived { animation: skmo-glow 1.6s ease-out; border-radius: 8px; }
+  /* The box gives under the thumb, so a tap feels like a click. */
+  [role="checkbox"] { transition: transform .12s ease, background-color .2s ease; }
+  [role="checkbox"]:active { transform: scale(.84); }
+  .skmo-meter { transition: width .6s cubic-bezier(.2,.8,.2,1); }
   @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
 `;

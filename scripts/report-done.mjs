@@ -12,20 +12,12 @@
    Run as:  node report-done.mjs [--days 7] [--site URL]
 */
 
-import { decryptJSON, decryptWithKey } from "../src/lib/crypto.js";
+import { decryptWithKey } from "../src/lib/crypto.js";
 import { fromShared } from "../src/lib/shared.js";
+import { parseArgs, siteOf, openCaseload, readBoard } from "./lib/caseload.mjs";
 
-const TAKES_VALUE = new Set(["--site", "--endpoint", "--caseload", "--days"]);
-const opts = {};
-for (let i = 2; i < process.argv.length; i++) {
-  const a = process.argv[i];
-  if (TAKES_VALUE.has(a)) { opts[a] = process.argv[++i]; continue; }
-  if (a.startsWith("--")) opts[a] = true;
-}
-
-const SITE = opts["--site"] || "https://sky-mo-caseload.netlify.app";
-const ENDPOINT = opts["--endpoint"] || `${SITE}/api/board`;
-const CASELOAD = opts["--caseload"] || `${SITE}/caseload.enc.json`;
+const { opts } = parseArgs(process.argv.slice(2), ["--site", "--endpoint", "--caseload", "--days"]);
+const ENDPOINT = opts["--endpoint"] || `${siteOf(opts)}/api/board`;
 const DAYS = Number(opts["--days"] || 7);
 
 const passcode = process.env.SKYMO_PASSCODE;
@@ -34,15 +26,13 @@ if (!passcode) {
   process.exit(2);
 }
 
-const enc = await (await fetch(CASELOAD, { cache: "no-store" })).json();
-const { data, key } = await decryptJSON(enc, passcode);
-
-const res = await (await fetch(ENDPOINT, { cache: "no-store" })).json();
-if (!res.blob) {
+/* The same caseload, and so the same key, as every other script. */
+const { data, key } = await openCaseload(opts, passcode);
+const { doc } = await readBoard(ENDPOINT, key, decryptWithKey);
+if (!doc) {
   console.log("The board is empty. Nothing to report.");
   process.exit(0);
 }
-const doc = await decryptWithKey(JSON.parse(res.blob), key);
 const { tasks } = fromShared(doc, data.seedTasks || []);
 
 const since = Date.now() - DAYS * 86400000;

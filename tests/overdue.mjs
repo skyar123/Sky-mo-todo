@@ -135,6 +135,18 @@ if (withFamily) {
     (await page.locator(`[data-overdue="${withFamily.id}"]`).count()) === 0,
     "a task pushed to the next visit leaves the pile"
   );
+  /* It does not vanish: it fades in place, then sits under "Cleared just
+     now" saying what happened to it, with a way back. */
+  check(
+    (await page.locator(`[data-row="${withFamily.id}"].skmo-leaving`).count()) === 1,
+    "and fades where it was rather than vanishing"
+  );
+  await page.waitForTimeout(1800);
+  const cleared = page.locator(`[data-archive] [data-archived="${withFamily.id}"]`);
+  check(
+    (await cleared.count()) === 1 && /Moved to/.test(await cleared.textContent()),
+    "then it is listed under Cleared just now, with where it went"
+  );
 
   /* And really moved, not merely hidden: it is on the board with the new date. */
   await page.click('button:has-text("‹ back")');

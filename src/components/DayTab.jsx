@@ -1,11 +1,13 @@
-import React from "react";
+import React, { useMemo } from "react";
 import { S } from "../styles.js";
 import { VisitRow } from "./bits.jsx";
 import { pillStyle } from "./Task.jsx";
-import { LONG, fmtDay, dueInfo, spokenDate, addDays } from "../lib/dates.js";
+import { LONG, fmtDay, dueInfo, spokenDate, addDays, fmtShort, parseISO, daysBetween } from "../lib/dates.js";
+import { newestNote, NOTES_QUIET_DAYS } from "../lib/current.js";
 import { agendaFor, liveAgendaFor } from "../lib/schedule.js";
 import { buildICS, downloadICS, icsFilename } from "../lib/ics.js";
 import { handoffMessage } from "../lib/handoff.js";
+import { PaperworkBlock } from "./Paperwork.jsx";
 
 /* "12 minutes ago" is more use than a timestamp when the question is really
    "is this current?". */
@@ -49,7 +51,7 @@ function BlockRow({ item, teaming, agendaCount, onOpenTeaming }) {
    exactly when you want to see what is coming. */
 const AHEAD = 5;
 
-export function DayTab({ caseload, today, counts, supplies, soon, openCount, unsent, reminderDay, familyById, changedFamilies, theirChanges, theirName, agendaCount, isTeamingBlock, teamingBlock, live, liveAsOf, calendarName, events, detectFamily, overdue, onOpenOverdue, onCatchUp, onOpenTeaming, onFlash, onOpenFamily, onGoTexts }) {
+export function DayTab({ caseload, today, counts, supplies, soon, openCount, unsent, reminderDay, familyById, changedFamilies, theirChanges, theirName, agendaCount, isTeamingBlock, teamingBlock, live, liveAsOf, calendarName, events, detectFamily, overdue, paperwork = [], paperworkRecent = [], board, onOpenOverdue, onCatchUp, onOpenTeaming, onFlash, onOpenFamily, onGoTexts }) {
   const { families, blocks } = caseload;
   const standing = agendaFor(families, blocks, today);
 
@@ -109,6 +111,11 @@ export function DayTab({ caseload, today, counts, supplies, soon, openCount, uns
     .flat()
     .some((i) => isTeamingBlock(i));
 
+  /* When the sweep last brought a note in. Silence from it looks exactly
+     like a quiet week, so after a week and a day it says so. */
+  const lastNote = useMemo(() => newestNote(board?.tasks || []), [board?.tasks]);
+  const noteAge = lastNote ? daysBetween(parseISO(lastNote), today) : null;
+
   /* One row, wherever it falls in the week. */
   const rowsFor = (items, keyPrefix) =>
     items.map((item, i) =>
@@ -119,6 +126,7 @@ export function DayTab({ caseload, today, counts, supplies, soon, openCount, uns
           count={counts[item.c.id]?.open || 0}
           overdue={counts[item.c.id]?.overdue || 0}
           supplies={supplies[item.c.id]}
+          paper={counts[item.c.id]?.paper}
           changed={changedFamilies.has(item.c.id)}
           time={item.time}
           onClick={() => onOpenFamily(item.c.id)}
@@ -162,6 +170,14 @@ export function DayTab({ caseload, today, counts, supplies, soon, openCount, uns
         </div>
       )}
 
+      {noteAge !== null && noteAge > NOTES_QUIET_DAYS && (
+        <div data-quiet-notes style={{ ...S.tip, marginTop: -6, marginBottom: 12 }}>
+          The newest visit note on the board is from {fmtShort(parseISO(lastNote))}, {noteAge} days ago.
+          If you have written notes since, the sweep has not found them: it reads your own Drive on
+          Sunday and Wednesday evenings.
+        </div>
+      )}
+
       {theirChanges.length > 0 && (
         <button onClick={onCatchUp} style={{ ...S.nudge, marginTop: 0, marginBottom: 18, background: "#F2F1FB", borderColor: "#CFCAEB" }}>
           <div style={S.nudgeTitle}>
@@ -179,7 +195,12 @@ export function DayTab({ caseload, today, counts, supplies, soon, openCount, uns
         </button>
       )}
 
-      <div style={{ ...S.h2, marginTop: 0 }}>Today</div>
+      {/* Paperwork first. It has a deadline set by the admission date and
+          nobody else will remember it, and it used to sit at the bottom of a
+          week of errands from visit notes, which is where it got missed. */}
+      <PaperworkBlock items={paperwork} recent={paperworkRecent} familyById={familyById} today={today} board={board} onFlash={onFlash} />
+
+      <div style={{ ...S.h2, marginTop: paperwork.length || paperworkRecent.length ? undefined : 0 }}>Today</div>
       {rowsFor(agenda, "t")}
       {agenda.length === 0 && <div style={S.empty}>No visits today.</div>}
 

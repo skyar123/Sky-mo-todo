@@ -20,10 +20,13 @@ export function doneThisWeek(tasks, today) {
     .sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
 }
 
-export function WeekTab({ tasks, families, today, onOpenFamily }) {
+export function WeekTab({ tasks, families, today, openCount, onOpenFamily }) {
   const from = startOfWeek(today);
   const done = useMemo(() => doneThisWeek(tasks, today), [tasks, today]);
-  const openLeft = tasks.filter((t) => !t.done).length;
+  /* The same count as the day screen. Counting every unticked entry took in
+     paperwork steps a year out and earlier visits' leftovers, so the two
+     screens disagreed by dozens. */
+  const openLeft = openCount ?? tasks.filter((t) => !t.done && !t.paper).length;
 
   const groups = useMemo(() => {
     const byFamily = new Map();
