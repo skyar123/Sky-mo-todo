@@ -9,10 +9,8 @@ import { latestVisitByFamily, isEarlier, isTodo } from "../lib/current.js";
 import { paperworkDue } from "../lib/paperwork.js";
 import { PaperRow, usePaperTick } from "./Paperwork.jsx";
 import { Archive } from "./Archive.jsx";
-import { useSettle, doneAt } from "../lib/useSettle.js";
+import { useSettle } from "../lib/useSettle.js";
 import { LINE } from "../styles.js";
-
-const RECENT_PAPER_MS = 30 * 86400000;
 
 export function FamilyDetail({ c, tasks, families, familyById, supplies, drops, today, board, who, onFlash, onBack }) {
   const all = tasks.filter((x) => x.client === c.id);
@@ -45,7 +43,10 @@ export function FamilyDetail({ c, tasks, families, familyById, supplies, drops, 
      that close, the next step is shown so the page never says "nothing". */
   const paperSoon = paperworkDue(all, today, 60);
   const paperNext = paperSoon.length ? [] : paperworkDue(all, today, 400).slice(0, 1);
-  const paperRecent = all.filter((t) => t.paper && t.done && doneAt(t) > Date.now() - RECENT_PAPER_MS);
+  /* Every step ticked for this family, however long ago: a tick that turns
+     out to be wrong (the battery CFCR says is still owed) has to be
+     somewhere it can be unticked. The newest five show; the rest fold. */
+  const paperRecent = all.filter((t) => t.paper && t.done);
   const paperShown = [...paperSoon, ...paperNext, ...paperRecent.filter((t) => paper.settle.isLeaving(t.id))]
     .sort((a, b) => a.due.localeCompare(b.due));
   const paperArchived = paperRecent.filter((t) => !paper.settle.isLeaving(t.id));
@@ -109,7 +110,7 @@ export function FamilyDetail({ c, tasks, families, familyById, supplies, drops, 
             ))}
             {paperNext.length > 0 && <div style={S.tip}>Nothing due in the next two months. That is the next step.</div>}
             <Archive
-              title="Done lately"
+              title="Done"
               rows={paperArchived}
               settle={paper.settle}
               render={(t) => <PaperRow t={t} family={c} today={today} onTick={paper.onTick} showFamily={false} />}

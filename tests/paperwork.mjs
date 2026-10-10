@@ -147,6 +147,26 @@ const check = (cond, good, why) => (cond ? ok(good) : bad(why || good));
     const fam = await page.textContent("main");
     check(/Paperwork/.test(fam) && /Admitted/.test(fam), "each family shows its paperwork and the date it counts from");
 
+    /* A step ticked long ago is still listed under the family's Done, so a
+       tick that turns out to be wrong can be taken back. */
+    const ticked = fx.families
+      .map((f) => ({ f, step: paperworkFor(f, fx.today).find((t) => t.done) }))
+      .find((x) => x.step);
+    if (ticked) {
+      await page.click('button:has-text("Families")');
+      await page.waitForTimeout(400);
+      await page.click(`button:has-text("${ticked.f.name}")`);
+      await page.waitForTimeout(500);
+      if (!(await page.locator("[data-paper]").count())) {
+        await page.locator('button:has-text("Paperwork")').first().click();
+        await page.waitForTimeout(300);
+      }
+      check(
+        (await page.locator(`[data-archive] [data-archived="${ticked.step.id}"]`).count()) === 1,
+        "a step ticked long ago is still under the family's Done, where it can be unticked"
+      );
+    }
+
     /* The printed week starts with the paperwork, for whoever it is printed for. */
     await page.click('button:has-text("Print")');
     await page.waitForSelector("[data-print-paperwork]", { timeout: 8000 }).catch(() => {});
