@@ -1,7 +1,7 @@
 import React from "react";
 import { S } from "../styles.js";
 import { VisitRow } from "./bits.jsx";
-import { pillStyle } from "./Task.jsx";
+import { pillStyle, DONE_PILL } from "./Task.jsx";
 import { dueInfo } from "../lib/dates.js";
 
 /* Matches on everything a person might actually remember: the pseudonym,
@@ -71,7 +71,7 @@ export function SearchResults({ result, today, counts, supplies, onOpenFamily, o
                   aria-checked={task.done}
                   aria-label={`Mark ${task.done ? "not done" : "done"}: ${task.text}`}
                 >
-                  <span aria-hidden="true">{task.done ? "✓" : ""}</span>
+                  <span aria-hidden="true" className={task.done ? "skmo-check" : undefined}>{task.done ? "✓" : ""}</span>
                 </button>
                 <button
                   onClick={() => family && onOpenFamily(family.id)}
@@ -80,7 +80,11 @@ export function SearchResults({ result, today, counts, supplies, onOpenFamily, o
                   {family && <span style={{ fontWeight: 700 }}>{family.name} · </span>}
                   {task.text}
                 </button>
-                {d && <span style={{ ...S.pill, ...pillStyle(d) }}>{d.label}</span>}
+                {task.done ? (
+                  <span style={{ ...S.pill, ...DONE_PILL }}>done</span>
+                ) : (
+                  d && <span style={{ ...S.pill, ...pillStyle(d) }}>{d.label}</span>
+                )}
               </div>
             );
           })}
